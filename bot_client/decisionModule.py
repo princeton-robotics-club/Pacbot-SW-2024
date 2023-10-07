@@ -3,6 +3,8 @@ import asyncio
 
 # Game state
 from gameState import GameState
+from websockets.sync.client import ClientConnection # type: ignore
+
 
 class DecisionModule:
 	'''
@@ -17,6 +19,18 @@ class DecisionModule:
 
 		# Game state object to store the game information
 		self.state = state
+
+	
+
+	def connect(self, connection: ClientConnection):
+		# Send messages to server for high level testing
+		self.connection = connection
+
+	def send_message(self) -> None:
+		pass
+		# if self.connection:
+		# 	print('sending d')
+			# self.connection.send(b'd')
 
 	async def decision_loop(self) -> None:
 		'''
@@ -41,3 +55,10 @@ class DecisionModule:
 
 			# Free up the event loop (a good chance to talk to the bot!)
 			await asyncio.sleep(1)
+
+
+			# send message to game server
+			self.send_message()
+			
+	def get_command(self, state) -> str:
+		return ''

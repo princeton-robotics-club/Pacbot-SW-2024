@@ -1,0 +1,21 @@
+
+import random
+
+
+
+CMD_UP = 'w'
+CMD_DOWN = 's'
+CMD_LEFT = 'a'
+CMD_RIGHT = 'd'
+CMD_PAUSE = 'p'
+CMD_PLAY = 'P'
+
+class decisionModule:
+
+    def getGhostDistance(self) -> :
+        pass
+
+
+    def getCommand(self, state) -> str:
+
+        return random.choice([CMD_UP,CMD_DOWN,CMD_LEFT,CMD_RIGHT])

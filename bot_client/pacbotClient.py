@@ -3,11 +3,17 @@ import json
 
 # Asyncio (for concurrency)
 import asyncio
+from test import BasicAStar
 
 # Websockets (for communication with the server)
 from websockets.sync.client import connect, ClientConnection # type: ignore
 from websockets.exceptions import ConnectionClosedError # type: ignore
 from websockets.typing import Data # type: ignore
+
+
+from astar import AStar
+from fieldnodes import FIELD_NODES
+
 
 # Game state
 from gameState import GameState
@@ -51,7 +57,7 @@ class PacbotClient:
 		self._socket_open: bool = False
 
 		# Connection object to communicate with the server
-		self.connection: ClientConnection
+		self.connection: ClientConnection = None
 
 		# Game state object to store the game information
 		self.state: GameState = GameState()
@@ -135,12 +141,49 @@ class PacbotClient:
 				# Update the state, given this message from the server
 				self.state.update(message_bytes)
 
+
 				# Free the event loop to allow another decision
 				await asyncio.sleep(0)
+
+
+				# print(str(self.state.ghosts[0].location.row) + ", " + str(self.state.ghosts[0].location.col))
+				print(str(self.state.pacmanLoc.col) + ", " + str(self.state.pacmanLoc.row))
+
+				path = BasicAStar(FIELD_NODES).astar('(13,23)', '(1,23)')
+				new_path = []
+				if path is not None:
+					for p in path:
+						new_path.append(p)
+
+				
+				last = eval(new_path[0])
+				for p in new_path[1:]:
+					await asyncio.sleep(0.001)
+					
+					# loc = p.split(',')
+					loc = eval(p)
+
+					#if loc[0] - last[0] == -1:
+						# self.connection.send(b'a')
+						#print('a')
+					if loc[0] - last[0] == 1:
+						self.connection.send(b'd')
+						print('d')
+					elif loc[1] - last[1] == -1:
+						self.connection.send(b'w')
+						print('w')
+					elif loc[1] - last[1] == 1:
+						self.connection.send(b's')
+						print('s')
+
+					last = loc
+					# self.connection.send()
 
 			# Break once the connection is closed
 			except ConnectionClosedError:
 				break
+
+
 
 # Main function
 async def main():
@@ -160,3 +203,5 @@ if __name__ == '__main__':
 	loop = asyncio.get_event_loop()
 	loop.create_task(main())
 	loop.run_forever()
+
+
