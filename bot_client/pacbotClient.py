@@ -57,7 +57,7 @@ class PacbotClient:
 		self.state: GameState = GameState()
 
 		# Decision module (policy) to make high-level decisions
-		self.policy: DecisionModule = DecisionModule(self.state)
+		self.decision: DecisionModule = DecisionModule(self.state)
 
 	async def run(self) -> None:
 		'''
@@ -71,7 +71,7 @@ class PacbotClient:
 			if self._socket_open:
 				await asyncio.gather(
           self.recv_loop(),
-          self.policy.decision_loop()
+          self.decision.decision_loop()
         )
 		finally: # Disconnect once the connection is over
 			await self.disconnect()
@@ -157,7 +157,10 @@ async def main():
 
 if __name__ == '__main__':
 
+	# Make an event loop
+	loop = asyncio.new_event_loop()
+	asyncio.set_event_loop(loop)
+
 	# Run the event loop forever
-	loop = asyncio.get_event_loop()
 	loop.create_task(main())
 	loop.run_forever()

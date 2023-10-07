@@ -210,7 +210,11 @@ class GameState:
 			return
 
 		# Unpack the values based on the format string
-		unpacked: tuple[int, ...] = unpack_from(self.format, state, 0)
+		unpacked: tuple[int, ...] = unpack_from( # type: ignore
+			self.format, 
+			state, 
+			0
+		)
 
 		# General game info
 		self.currTicks    = unpacked[0]
@@ -243,10 +247,10 @@ class GameState:
 		self.fruitLoc.update(unpacked[15])
 
 		# Pellet info
-		self.pelletArr = list[int](unpacked)[16:]
+		self.pelletArr = list(unpacked)[16:]
 
 		# Display the game state (i.e., terminal printer)
-		self.display()
+		# self.display()
 
 	def pelletAt(self, row: int, col: int):
 		'''

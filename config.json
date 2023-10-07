@@ -1,6 +1,6 @@
 {
   "ServerIP": "localhost",
-  "WebSocketPort": 3002,
+  "WebSocketPort": 5173,
   "OneClientPerIP": true,
 
   "TrustedClientIPs": [

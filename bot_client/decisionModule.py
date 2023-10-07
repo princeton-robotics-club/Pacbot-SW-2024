@@ -4,6 +4,12 @@ import asyncio
 # Game state
 from gameState import GameState
 
+# Policy
+from aStarPolicy import AStarPolicy
+
+# Queue of commands to send to robot
+from collections import deque
+
 class DecisionModule:
 	'''
 	Sample implementation of a decision module for high-level
@@ -18,6 +24,12 @@ class DecisionModule:
 		# Game state object to store the game information
 		self.state = state
 
+		# Buffer of commands to send to robot
+		self.commands: deque = deque()
+
+		# Policy to determine the next action
+		self.policy: AStarPolicy = AStarPolicy(state, self.commands)
+
 	async def decision_loop(self) -> None:
 		'''
 		Decision loop for Pacbot
@@ -31,13 +43,13 @@ class DecisionModule:
 			# client may fall behind on updating the game state!
 
 			# Lock the game state
-			# self.state.lock()
+			self.state.lock()
 
 			# Replace this with the actual decisions for Pacbot
-			await asyncio.sleep(1)
+			await self.policy.plan()
 
 			# Lock the game state
-			# self.state.unlock()
+			self.state.unlock()
 
 			# Free up the event loop (a good chance to talk to the bot!)
-			await asyncio.sleep(1)
+			await asyncio.sleep(10000000)
