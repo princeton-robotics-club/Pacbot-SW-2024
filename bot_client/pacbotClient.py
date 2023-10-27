@@ -10,13 +10,13 @@ from websockets.sync.client import connect, ClientConnection # type: ignore
 from websockets.exceptions import ConnectionClosedError # type: ignore
 from websockets.typing import Data # type: ignore
 
-
 from astar import AStar
 from fieldnodes import FIELD_NODES
+import math
 
 
 # Game state
-from gameState import GameState
+from gameState import GameMode, GameState
 
 # Decision module
 from decisionModule import DecisionModule
@@ -64,6 +64,75 @@ class PacbotClient:
 
 		# Decision module (policy) to make high-level decisions
 		self.policy: DecisionModule = DecisionModule(self.state)
+
+		# Decision State
+		self.decision_state = 0
+		self.decision_states = ["State 0", "State 1", "State 2", "State 3"]
+		self.decision_goal = '(1,23)'
+
+		# Game Info
+		self.game_super_pellet_locs = [(1,23), (26,23), (1,3), (26,3)]
+
+	def game_get_closest_super_pellet(self):
+		if len(self.game_super_pellet_locs) == 0:
+			return None
+		closest_pellet = 0
+		smallest_dist = 99
+		for i in range(len(self.game_super_pellet_locs)):
+			dist = math.sqrt((self.state.pacmanLoc.col - self.game_super_pellet_locs[i][0]) ** 2 \
+						+ (self.state.pacmanLoc.row - self.game_super_pellet_locs[i][0]) ** 2)
+			if dist < smallest_dist:
+				smallest_dist = dist
+				closest_pellet = i
+		return '(' + str(self.game_super_pellet_locs[closest_pellet][0]) + ',' + str(self.game_super_pellet_locs[closest_pellet][1]) + ')'
+	
+	def game_get_closest_ghost(self):
+		closest_ghost = self.state.ghosts[0]
+		smallest_dist = 99
+		for i, ghost in enumerate(self.state.ghosts):
+			dist = math.sqrt((self.state.pacmanLoc.col - ghost.location.col) ** 2 \
+						+ (self.state.pacmanLoc.row - ghost.location.row) ** 2)
+			if dist < smallest_dist:
+				smallest_dist = dist
+				closest_ghost = ghost
+		return '(' + str(closest_ghost.location.col) + ',' + str(closest_ghost.location.row) + ')'
+	
+	def game_get_closest_tasty_ghost(self):
+		closest_ghost = self.state.ghosts[0]
+		smallest_dist = 500
+		for i, ghost in enumerate(self.state.ghosts):
+			dist = math.sqrt((self.state.pacmanLoc.col - ghost.location.col) ** 2 \
+						+ (self.state.pacmanLoc.row - ghost.location.row) ** 2)
+			if dist < smallest_dist and ghost.frightCycles != 0 and ghost.frightCycles != 128 and ghost.spawning == False:
+				smallest_dist = dist
+				closest_ghost = ghost
+		return '(' + str(closest_ghost.location.col) + ',' + str(closest_ghost.location.row) + ')'
+
+
+	def decision_transition(self):
+		# remove each pellet
+		for i, super_pellet in enumerate(self.game_super_pellet_locs):
+			if '(' + str(self.state.pacmanLoc.col) + ', ' + str(self.state.pacmanLoc.row) + ')' == str(super_pellet):
+				del self.game_super_pellet_locs[i]
+
+		# pellet hunter
+		if self.decision_state == 0:
+			# check if any ghosts are frightened
+			for ghost in self.state.ghosts:
+				if ghost.frightCycles != 0 and ghost.frightCycles != 128 and ghost.spawning == False:
+					self.decision_state = 1
+					break
+
+		# ghost hunter
+		elif self.decision_state == 1:
+			change_state = True
+			for ghost in self.state.ghosts:
+				if ghost.frightCycles != 0 and ghost.frightCycles != 128 and ghost.spawning == False:
+					# print('cycle:' + str(ghost.frightCycles))
+					change_state = False
+			if change_state == True:
+				self.decision_state = 0
+		
 
 	async def run(self) -> None:
 		'''
@@ -116,11 +185,28 @@ class PacbotClient:
 		Check whether the connection is open (unused)
 		'''
 		return self._socket_open
+	
+	def get_next_command(self, curr, next) -> bytes:
+		'''
+		Given a current location and a next location, returns a byte string representing the command to send
+		'''
+		if curr[0] - next[0] == -1:
+			print('d')
+			return b'd'
+		elif curr[0] - next[0] == 1:
+			print('a')
+			return b'a'
+		elif curr[1] - next[1] == -1:
+			print('s')
+			return b's'
+		print('w')
+		return b'w'
 
 	async def recv_loop(self) -> None:
 		'''
 		Receive loop for capturing messages from the server
 		'''
+		last_command = None
 
 		# Receive values as long as the connection is open
 		while self._socket_open:
@@ -147,37 +233,47 @@ class PacbotClient:
 
 
 				# print(str(self.state.ghosts[0].location.row) + ", " + str(self.state.ghosts[0].location.col))
-				print(str(self.state.pacmanLoc.col) + ", " + str(self.state.pacmanLoc.row))
+				print('pacloc ' + str(self.state.pacmanLoc.col) + ", " + str(self.state.pacmanLoc.row))
 
-				path = BasicAStar(FIELD_NODES).astar('(13,23)', '(1,23)')
+				# make sure pacman in field and game playing
+				if self.state.pacmanLoc.col < 0 or self.state.pacmanLoc.col >= 32 \
+					or self.state.pacmanLoc.row < 0 or self.state.pacmanLoc.row >= 28 \
+					or self.state.gameMode == GameMode.PAUSED:
+					continue
+
+				target = None
+				if self.decision_state == 0:
+					target = self.game_get_closest_super_pellet()
+				elif self.decision_state == 1:
+					target = self.game_get_closest_tasty_ghost()
+				print('target ' + str(target))
+				print('state ' + str(self.decision_state))
+
+				path = BasicAStar(FIELD_NODES).astar('(' + str(self.state.pacmanLoc.col) + ',' + str(self.state.pacmanLoc.row) + ')', target)
 				new_path = []
+				i = 0
 				if path is not None:
 					for p in path:
-						new_path.append(p)
+						if i < 2:
+							new_path.append(p)
+							i += 1
+				# send one command
+				print(new_path)
+				if len(new_path) <= 1:
+					print('no target')
+					self.connection.send(b'd')
+				else:
+					# avoid sending same command twice
+					if last_command != None and last_command[0] == new_path[0] and last_command[1] == new_path[1]:
+						continue
+					else:
+						curr = eval(new_path[0])
+						next = eval(new_path[1])
+						next_command = self.get_next_command(curr, next)
+						self.connection.send(next_command)
+						last_command = (new_path[0], new_path[1])
 
-				
-				last = eval(new_path[0])
-				for p in new_path[1:]:
-					await asyncio.sleep(0.001)
-					
-					# loc = p.split(',')
-					loc = eval(p)
-
-					#if loc[0] - last[0] == -1:
-						# self.connection.send(b'a')
-						#print('a')
-					if loc[0] - last[0] == 1:
-						self.connection.send(b'd')
-						print('d')
-					elif loc[1] - last[1] == -1:
-						self.connection.send(b'w')
-						print('w')
-					elif loc[1] - last[1] == 1:
-						self.connection.send(b's')
-						print('s')
-
-					last = loc
-					# self.connection.send()
+				self.decision_transition()
 
 			# Break once the connection is closed
 			except ConnectionClosedError:

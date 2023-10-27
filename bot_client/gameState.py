@@ -217,5 +217,5 @@ class GameState:
 		self.pelletArr = list(unpacked)[16:]
 
 		# TODO: Remove
-		print('+')
+		# print('+')
 
