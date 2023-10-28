@@ -578,8 +578,10 @@ class GameState:
 		'''
 		Helper function to check if a wall is at a given location
 		'''
-
-		return bool((self.wallArr[row] >> col) & 1)
+		try:
+			return bool((self.wallArr[row] >> col) & 1)
+		except:
+			return True
 
 	def display(self):
 		'''
@@ -587,6 +589,7 @@ class GameState:
 		'''
 
 		# Print the tick number, colored based on the mode
+		print('\033[2J\033[H')
 		print(f'{GameModeColors[self.gameMode]}-------'\
 				f' time = {self.currTicks:5d} -------\033[0m')
 

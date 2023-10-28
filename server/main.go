@@ -40,7 +40,7 @@ func main() {
 	go ge.RunLoop() // Run the game engine loop asynchronously
 
 	// Set the enable for game command logging to be false by default
-	game.SetCommandLogEnable(false)
+	game.SetCommandLogEnable(true)
 
 	// Keep the game engine alive until a user types 'q'
 	var input string

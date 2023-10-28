@@ -13,7 +13,7 @@ from websockets.typing import Data # type: ignore
 from gameState import GameState
 
 # Decision module
-from decisionModule import DecisionModule
+from policies.astar.decisionModule import DecisionModule
 
 # Restore the ability to use Ctrl + C within asyncio
 import signal
@@ -139,10 +139,12 @@ class PacbotClient:
 
 				# Update the state, given this message from the server
 				self.state.update(messageBytes)
+				# print('client: ' + str(self.state.ghosts[0].location.col) + ',' + str(self.state.ghosts[0].location.row)) 
 
 				# Write a response back to the server if necessary
-				if self.state.writeServerBuf and writeWaitTicks == 0:
+				if self.state.writeServerBuf and writeWaitTicks <= 0:
 					response: bytes = self.state.writeServerBuf.popleft()
+					print('Queued response:', response)
 					self.connection.send(response)
 					writeWaitTicks = 3
 				writeWaitTicks -= 1
