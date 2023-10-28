@@ -77,18 +77,70 @@ class DecisionModule:
 		'''
 		return '(' + str(location.col) + ',' + str(location.row) + ')'
 	
+	def get_field_location_from_coords(self, col, row):
+		'''
+		Convert location to a field node coordinate
+		'''
+		return '(' + str(col) + ',' + str(row) + ')'
+	
 	def get_distance(self, col1, row1, col2, row2):
 		'''
 		Calculate euclidian distnace between two points
 		'''
 		return math.sqrt((col1 - col2)**2 + (row1 - row2)**2)
 	
-	def calculate_edge_weight(self, prev_weight, distance_to_ghost, k=16):
+	def get_pachattan_distance(self, col1, row1, col2, row2):
+		'''
+		A* distance on pacbot field given two points
+		Note: this has a not small run time
+		'''
+		path = BasicAStar(FIELD_NODES).astar(
+			self.get_field_location_from_coords(col1, row1),
+			self.get_field_location_from_coords(col2, row2),
+		)
+		if path: return sum(1 for _ in path)
+		return 0
+
+
+	
+	def is_ghost_moving_towards_node(self, col, row, ghost):
+		'''
+		return true if ghost moving in general dir of the col and row coordinate
+		'''
+
+		curr_dist = self.get_distance(ghost.location.col, ghost.location.row, col, row)
+		future_dist = self.get_distance(ghost.location.colDir, ghost.location.rowDir, col, row)
+		
+		return future_dist < curr_dist
+	
+	def calculate_edge_weight(self, node, k=16):
 		'''
 		Calculate a weight value according to the inverse square distance to the nearest ghost
 		'''
-		return int(prev_weight + k * 1/(distance_to_ghost**2))
-	
+		node_col, node_row = eval(node)
+
+		# list of dangerous ghosts
+		dangerous_ghosts = [ghost for ghost in self.state.ghosts if not(ghost.frightSteps == 0 and ghost.spawning == False)]
+
+		sum = 0
+		for ghost in dangerous_ghosts:
+
+			# dist to ghost
+			if ghost:
+				distance_to_ghost = max(self.get_distance(ghost.location.col, ghost.location.row, node_col, node_row), 1)
+			else:
+				distance_to_ghost = INFINITY
+
+			# account for ghost direction 
+			# TODO: tune lambda (think about nodes immediately behind the ghost, not just generally away from where the ghost is going)
+			l = 10 if self.is_ghost_moving_towards_node(node_col, node_row, ghost) else 0.1 
+
+			# inverse square sum
+			sum += int(l * k * 1/(distance_to_ghost**2)) * (1/len(dangerous_ghosts))
+
+		return sum
+			
+		
 	def propagate_ghost_weights_helper(self, node, recursive_lvl=0, max_recrusive_lvl=5):
 		# Base Case: hit the limit of recursive calls (saves computation time) 
 		if recursive_lvl >= max_recrusive_lvl: return
@@ -101,17 +153,8 @@ class DecisionModule:
 
 		new_edge_nodes = []
 		for edge_node, weight in self.field_nodes[node]:
-			# get distance to nearest dangerous ghost (TO FIX: other ghosts will be ignored)
-			ghost = self.get_closest_dangerous_ghost()
-			node_col, node_row = eval(edge_node) # if everything breaks maybe switch col and row
-			if ghost:
-				distance_to_ghost = max(self.get_distance(ghost.location.col, ghost.location.row, node_col, node_row), 1)
-			else:
-				distance_to_ghost = INFINITY
-
-
 			# store the edge weights
-			new_edge_nodes.append((edge_node, self.calculate_edge_weight(weight, distance_to_ghost)))
+			new_edge_nodes.append((edge_node, weight + self.calculate_edge_weight(edge_node)))
 
 			# recursive call for each adjacent node (we only have to update the directed edges going away from the pacbot)
 			self.propagate_ghost_weights_helper(edge_node, recursive_lvl=recursive_lvl+1)
@@ -119,9 +162,11 @@ class DecisionModule:
 		# update field
 		self.field_nodes[node] = new_edge_nodes
 
-	def propagate_ghost_weights(self):
+	def propagate_weights(self):
 		'''
 		Update the weight of the edges in the field to reflect the positions of the pacbot relative to the ghosts
+		and current direction of the pacbot
+		TODO: Traveling the same direction should be weighted lower
 		'''
 		# Remember to remove updated weights from last
 		node 				= self.get_field_location(self.state.pacmanLoc)	# pacman location
@@ -178,6 +223,20 @@ class DecisionModule:
 		for ghost in self.state.ghosts:
 			dist = (self.state.pacmanLoc.col - ghost.location.col) ** 2 \
 						+ (self.state.pacmanLoc.row - ghost.location.row) ** 2
+			if dist < smallest_dist and ghost.frightSteps == 0 and ghost.spawning == False:
+				smallest_dist = dist
+				closest_ghost = ghost
+		return closest_ghost
+	
+	def get_closest_dangerous_ghost_to_pos(self, col, row):
+		'''
+		Returns the closest ghost that has the ability to eat the pacbot
+		'''
+		closest_ghost = None
+		smallest_dist = INFINITY
+		for ghost in self.state.ghosts:
+			dist = (col - ghost.location.col) ** 2 \
+						+ (row - ghost.location.row) ** 2
 			if dist < smallest_dist and ghost.frightSteps == 0 and ghost.spawning == False:
 				smallest_dist = dist
 				closest_ghost = ghost
@@ -289,7 +348,7 @@ class DecisionModule:
 		Given a target, generate a path to the target and return the first two nodes in the path
 		'''
 		# update field to reflect position of ghosts
-		self.propagate_ghost_weights()
+		self.propagate_weights()
 
 		# calcualte path
 		path = BasicAStar(self.field_nodes).astar(self.get_field_location(self.state.pacmanLoc), target)
