@@ -113,14 +113,14 @@ class DecisionModule:
 		
 		return future_dist < curr_dist
 	
-	def calculate_edge_weight(self, node, k=16):
+	def calculate_edge_weight(self, node, k=160):
 		'''
 		Calculate a weight value according to the inverse square distance to the nearest ghost
 		'''
 		node_col, node_row = eval(node)
 
 		# list of dangerous ghosts
-		dangerous_ghosts = [ghost for ghost in self.state.ghosts if not(ghost.frightSteps == 0 and ghost.spawning == False)]
+		dangerous_ghosts = [ghost for ghost in self.state.ghosts if ghost.frightSteps <= 0]
 
 		sum = 0
 		for ghost in dangerous_ghosts:
@@ -223,7 +223,7 @@ class DecisionModule:
 		for ghost in self.state.ghosts:
 			dist = (self.state.pacmanLoc.col - ghost.location.col) ** 2 \
 						+ (self.state.pacmanLoc.row - ghost.location.row) ** 2
-			if dist < smallest_dist and ghost.frightSteps == 0 and ghost.spawning == False:
+			if dist < smallest_dist and ghost.frightSteps <= 0 and ghost.spawning == False:
 				smallest_dist = dist
 				closest_ghost = ghost
 		return closest_ghost
@@ -237,7 +237,7 @@ class DecisionModule:
 		for ghost in self.state.ghosts:
 			dist = (col - ghost.location.col) ** 2 \
 						+ (row - ghost.location.row) ** 2
-			if dist < smallest_dist and ghost.frightSteps == 0 and ghost.spawning == False:
+			if dist < smallest_dist and ghost.frightSteps <= 0 and ghost.spawning == False:
 				smallest_dist = dist
 				closest_ghost = ghost
 		return closest_ghost
@@ -251,7 +251,7 @@ class DecisionModule:
 		for ghost in self.state.ghosts:
 			dist = (self.state.pacmanLoc.col - ghost.location.col) ** 2 \
 						+ (self.state.pacmanLoc.row - ghost.location.row) ** 2
-			if dist < smallest_dist and ghost.frightSteps != 0 and ghost.spawning == False:
+			if dist < smallest_dist and ghost.frightSteps > 0 and ghost.spawning == False:
 				smallest_dist = dist
 				closest_ghost = ghost
 		# if no ghosts, return closest pellet
@@ -299,7 +299,7 @@ class DecisionModule:
 			if '(' + str(self.state.pacmanLoc.col) + ', ' + str(self.state.pacmanLoc.row) + ')' == str(super_pellet): # TODO: Use eval
 				del self.super_pellets[i]
 
-		# transition from small pellet chaser
+		# transition from small pellet chaser to ...
 		if self.decision_state == DecisionStates.SMALL_PELLET_CHASER:
 			return
 
