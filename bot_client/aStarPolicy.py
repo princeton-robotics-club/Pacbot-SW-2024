@@ -4,6 +4,8 @@ from heapq import heappush, heappop
 # Game state
 from gameState import *
 
+# Declaration of infinity (for minimization)
+INFINITY = 99999999
 
 '''
 Cost Explanations:
@@ -110,10 +112,10 @@ class AStarPolicy:
 		hCostGhost = 0
 
 		# Catching frightened ghosts
-		hCostScaredGhost = 999999999
+		hCostScaredGhost = INFINITY
 
 		# Chasing fruit
-		hCostFruit = 999999999
+		hCostFruit = INFINITY
 
 		# Add a penalty for being close to the ghosts
 		for ghost in self.state.ghosts:
@@ -136,13 +138,13 @@ class AStarPolicy:
 			hCostFruit = distL2(self.state.pacmanLoc, self.state.fruitLoc)
 
 		# If there are frightened ghosts, chase them
-		if hCostScaredGhost < 999999999:
+		if hCostScaredGhost < INFINITY:
 			return min(hCostScaredGhost, hCostFruit) + hCostGhost
 
 		# Otherwise, if there is a fruit on the board, target fruit
-		if hCostFruit != 999999999:
+		if hCostFruit != INFINITY:
 			return hCostFruit + hCostGhost
-		
+
 		# Otherwise, chase the target
 		return hCostTarget + hCostGhost
 
