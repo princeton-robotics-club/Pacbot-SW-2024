@@ -1,6 +1,9 @@
 # Heap Queues
 from heapq import heappush, heappop
 import math
+import time
+
+from union import UnionFind
 
 # Game state
 from gameState import *
@@ -58,7 +61,11 @@ class DistTypes(IntEnum):
 # }
 
 
+def getQuadCoord(loc: Location) -> tuple:
+	return loc.row // 15, loc.col // 14
 
+QUAD_WIDTH  = 14
+QUAD_HEGIHT = 15
 
 # Create new location with row, col
 def newLocation(row: int, col: int):
@@ -164,6 +171,10 @@ class AStarPolicy:
 		self.error_count = 0
 		self.dropped_command_count = 0
 
+		# for computing pellets sets
+		self.lastSetUpdate: float = time.time()
+		self.setUpdateDelay: float = 2
+
 		# Distance metrics
 		self.distType = distType
 		match self.distType:
@@ -180,6 +191,8 @@ class AStarPolicy:
 				self.distType = DistTypes.PACHATTAN_DISTANCE
 				self.dist = distL3
 				self.distSq = distSqL3
+
+
 
 	def getNearestPellet(self) -> Location:
 
@@ -219,7 +232,7 @@ class AStarPolicy:
 					queue.append(nextLoc)
 					visited.add(str(nextLoc))
 		return first
-		
+
 	def pelletAtSafe(self, row, col):
 		if self.state.wallAt(row, col):
 			return False
@@ -248,7 +261,7 @@ class AStarPolicy:
 
 		# Chasing fruit
 		hCostFruit = 0
-		
+
 		# Pellet heuristic
 		hCostPellet = 1
 
@@ -310,10 +323,11 @@ class AStarPolicy:
 		# Otherwise, if there is a fruit on the board, target fruit
 		# if hCostFruit != 0:
 		# 	return int(hCostTarget + hCostFruit + hCostGhost + hCostGhostSpawn)
-		
+
 		# Otherwise, chase the target
 		hCostTarget = self.dist(self.state.pacmanLoc, self.target)
 		return int(hCostTarget + hCostGhost + hCostFruit + hCostPellet + hCostGhostSpawn)
+
 
 	async def act(self, predicted_delay=6) -> None:
 
@@ -335,7 +349,39 @@ class AStarPolicy:
 
 		# Add the initial node to the priority queue
 		heappush(priorityQueue, initialNode)
-		
+
+		# note: compute when hovering super pellet and not in chase
+
+		# find current quadrant
+		quadCoord = getQuadCoord(self.state.pacmanLoc)
+
+		# update sets
+		u = UnionFind(QUAD_WIDTH * QUAD_HEGIHT)
+
+		# iterate all locs in quad, union all neighboring pellets
+		for row in range(quadCoord[0], quadCoord[0] + QUAD_HEGIHT, 1):
+			for col in range(quadCoord[1], quadCoord[1] + QUAD_WIDTH, 1):
+
+				# skip empty cells
+				if not self.state.pelletAt(row, col):
+					continue
+
+				# check neighbors
+				for x, y in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+					nrow = row + y
+					ncol = col + x
+
+					# check out of bounds
+					if not (0 <= nrow <= 31) or not (0 <= ncol <= 28):
+						continue
+
+					# union if not out of bounds
+					if self.state.pelletAt(nrow, ncol):
+						u.union_locations(row, col, nrow, ncol)
+
+		# neighboring pellets in sets now, find largest set
+
+
 		if self.state.superPelletAt(3, 26):
 			self.target = newLocation(5, 21)
 
@@ -360,8 +406,8 @@ class AStarPolicy:
 				counter = 0
 			else:
 				counter += 1
-		
-		
+
+
 		print("-"*15)
 		print("expected: " + str(self.expectedLoc))
 		if str(self.expectedLoc) != str(self.state.pacmanLoc):
@@ -378,12 +424,12 @@ class AStarPolicy:
 		print("average error: " + str(self.error_sum/self.error_count))
 
 		# print("dropped command count: " + str(self.dropped_command_count))
-				
+
 		# self.state.pacmanLoc.row = self.expectedLoc.row
 		# self.state.pacmanLoc.col = self.expectedLoc.col
 
 		realPacLoc = self.state.pacmanLoc
-		
+
 
 		# Keep proceeding until a break point is hit
 		while len(priorityQueue):
@@ -409,7 +455,7 @@ class AStarPolicy:
 
 				self.expectedLoc = origLoc
 				return
-			
+
 			# get current direction (we will use this to negatively weight changing directions)
 			currDir = self.state.pacmanLoc.getDirection()
 
@@ -434,7 +480,7 @@ class AStarPolicy:
 
 				# Check whether the direction is valid
 				valid = self.state.simulateAction(predicted_delay, direction)
-				
+
 				# If the state is valid, add it to the priority queue
 				if valid:
 					# calculate the cost of changing direction
