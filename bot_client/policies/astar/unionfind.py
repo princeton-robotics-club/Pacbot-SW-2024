@@ -1,9 +1,9 @@
-from gameState import Location
+#gameState import Location
 
 
 # converts 2d to 1d for union
-def flatten(row, col, h):
-    return row * h + col
+def flatten(row, col):
+    return row * 28 + col
 
 class UnionFind:
     """Weighted quick-union with path compression and connected components.
@@ -25,6 +25,7 @@ class UnionFind:
         self._id = list(range(n))
         self._sz = [1] * n
         self.cc = n  # connected components
+        self._largest_size_id = 0
 
     def _root(self, i):
         j = i
@@ -44,13 +45,26 @@ class UnionFind:
         if (self._sz[i] < self._sz[j]):
             self._id[i] = j
             self._sz[j] += self._sz[i]
+
+            if (self._sz[self._largest_size_id] < self._sz[j]):
+                self._largest_size_id = j
         else:
             self._id[j] = i
             self._sz[i] += self._sz[j]
-        self.cc -= 1
 
-    def union_locations(self, loc1: Location, loc2: Location):
-        self.union(flatten(loc1.row, loc1.col), flatten(loc2.row, loc2.col))
+            if (self._sz[self._largest_size_id] < self._sz[i]):
+                self._largest_size_id = i
+        self.cc -= 1
 
     def union_grid(self, row1: int, col1: int, row2: int, col2: int):
         self.union(flatten(row1, col1), flatten(row2, col2))
+
+
+#u = UnionFind(5)
+#print(u._id)
+#print(u._sz)
+#u.union(3, 0)
+#u.union(1, 0)
+#print(u._id)
+#print(u._sz)
+#print(u._largest_size_id)

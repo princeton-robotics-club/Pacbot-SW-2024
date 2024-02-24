@@ -3,7 +3,7 @@ from heapq import heappush, heappop
 import math
 import time
 
-from union import UnionFind
+from .unionfind import UnionFind
 
 # Game state
 from gameState import *
@@ -12,7 +12,8 @@ from gameState import *
 import policies.astar.genPachattanDistDict as pacdist
 import policies.astar.example as ex
 
-
+# Quadrant pellet set
+from valid_pellet_locations import QUAD_PELLET_LOCS
 
 '''
 Cost Explanations:
@@ -61,11 +62,30 @@ class DistTypes(IntEnum):
 # }
 
 
+QUAD_WIDTH  = 14
+QUAD_HEIGHT = 15
+
 def getQuadCoord(loc: Location) -> tuple:
 	return loc.row // 15, loc.col // 14
 
-QUAD_WIDTH  = 14
-QUAD_HEGIHT = 15
+def getQuadrant(loc: Location) -> str:
+	row = loc.row
+	col = loc.col
+	if row <= QUAD_HEIGHT and col <= QUAD_WIDTH:
+		return 'Q1'
+
+  # quadrant 2 (topright)
+	if row <= QUAD_HEIGHT and col > QUAD_WIDTH:
+		return 'Q2'
+
+  # quadrant 3 (bottomleft)
+	if row > QUAD_HEIGHT and col <= QUAD_WIDTH:
+		return 'Q3'
+
+  # quadrant 4 (bottom right)
+	if row > QUAD_HEIGHT and col > QUAD_WIDTH:
+		return 'Q4'
+
 
 # Create new location with row, col
 def newLocation(row: int, col: int):
@@ -352,60 +372,79 @@ class AStarPolicy:
 
 		# note: compute when hovering super pellet and not in chase
 
-		# find current quadrant
-		quadCoord = getQuadCoord(self.state.pacmanLoc)
+    	# TODO:
+    	# ~~1. keep track of sizes of sets of connected pellets
+		# 2. make some method to choose a pellet of the largest set
+	    # 3. keep track of when to recompute sets
 
-		# update sets
-		u = UnionFind(QUAD_WIDTH * QUAD_HEGIHT)
+    	## get quadrant
+		#quadrant = getQuadrant(self.state.pacmanLoc)
 
-		# iterate all locs in quad, union all neighboring pellets
-		for row in range(quadCoord[0], quadCoord[0] + QUAD_HEGIHT, 1):
-			for col in range(quadCoord[1], quadCoord[1] + QUAD_WIDTH, 1):
+    	## get pellet locations of quadrant
+		#pellet_locations = QUAD_PELLET_LOCS[quadrant]
 
-				# skip empty cells
-				if not self.state.pelletAt(row, col):
-					continue
+		#valid_locations = [(row, col) for row, col in pellet_locations if self.state.pelleAt(row, col)]
 
-				# check neighbors
-				for x, y in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-					nrow = row + y
-					ncol = col + x
+		#u = UnionFind(len(valid_locations))
 
-					# check out of bounds
-					if not (0 <= nrow <= 31) or not (0 <= ncol <= 28):
-						continue
+    	## union connected stuff together, unionfind will keep track of largest set by referencing the set's root index
+		#for row, col in valid_locations:
+		#	for row_offset, col_offset in [(1,0), (-1,0), (0,1), (0,-1)]:
+		#		if (row + row_offset, col + col_offset) in valid_locations:
+		#			u.union_grid(row, col, row + row_offset, col + col_offset)
 
-					# union if not out of bounds
-					if self.state.pelletAt(nrow, ncol):
-						u.union_locations(row, col, nrow, ncol)
+		#self.target = newLocation(*valid_locations[u._largest_size_id])
 
-		# neighboring pellets in sets now, find largest set
+		if counter == 1 or \
+       	self.target.row == self.state.pacmanLoc.row and \
+        self.target.col == self.state.pacmanLoc.col:
+			# get quadrant
+			quadrant = getQuadrant(self.state.pacmanLoc)
 
+            # get pellet locations of quadrant
+			pellet_locations = QUAD_PELLET_LOCS[quadrant]
+			valid_locations = [(row, col) for row, col in pellet_locations if self.state.pelletAt(row, col)]
 
-		if self.state.superPelletAt(3, 26):
-			self.target = newLocation(5, 21)
+			if (len(valid_locations)) > 0:
+				u = UnionFind(len(valid_locations))
+				# union connected stuff together, unionfind will keep track of largest set by referencing the set's root index
+				for i, (row, col)in enumerate(valid_locations):
+					for row_offset, col_offset in [(1,0), (-1,0), (0,1), (0,-1)]:
+						search = row + row_offset, col + col_offset
+						if search in valid_locations:
+							j = valid_locations.index(search)
+							u.union(i, j)
+				target_row, target_col = valid_locations[u._largest_size_id]
 
-        # check if top left pellet exists
-		elif self.state.superPelletAt(3, 1):
-			self.target = newLocation(5, 6)
-
-        # check if bottom left pellet exists
-		elif self.state.superPelletAt(23, 1):
-			self.target = newLocation(20, 1)
-
-        # check if bottom right pellet exists
-		elif self.state.superPelletAt(23, 26):
-			self.target = newLocation(20, 26)
-		# no super pellets
+				self.target = newLocation(target_row, target_col)
+			counter = 0
 		else:
-			# avoid calc every time (wait 20 decisions)
-			if counter == 1 or \
-					self.target.row == self.state.pacmanLoc.row and \
-					self.target.col == self.state.pacmanLoc.col:
-				self.target = self.getNearestPellet()
-				counter = 0
-			else:
-				counter += 1
+			counter += 1
+
+		#if self.state.superPelletAt(3, 26):
+		#	self.target = newLocation(5, 21)
+
+    #    # check if top left pellet exists
+		#elif self.state.superPelletAt(3, 1):
+		#	self.target = newLocation(5, 6)
+
+    #    # check if bottom left pellet exists
+		#elif self.state.superPelletAt(23, 1):
+		#	self.target = newLocation(20, 1)
+
+    #    # check if bottom right pellet exists
+		#elif self.state.superPelletAt(23, 26):
+		#	self.target = newLocation(20, 26)
+		## no super pellets
+		#else:
+		#	# avoid calc every time (wait 20 decisions)
+		#	if counter == 1 or \
+		#			self.target.row == self.state.pacmanLoc.row and \
+		#			self.target.col == self.state.pacmanLoc.col:
+		#		self.target = self.getNearestPellet()
+		#		counter = 0
+		#	else:
+		#		counter += 1
 
 
 		print("-"*15)
