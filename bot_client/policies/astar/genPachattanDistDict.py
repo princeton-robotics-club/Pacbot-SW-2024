@@ -1,6 +1,6 @@
-
 import bitstruct.c as bitstruct
 from gameState import Directions, Location, GameState
+from collections import deque
 
 
 class Node:
@@ -30,18 +30,20 @@ def getDistance(loc: Location, state: GameState, dist_dict, count):
 
     # BFS queue
     firstNode = Node(loc, 0)
-    queue = [firstNode]
+
+    # deque O(1) pop from left
+    queue = deque([firstNode])
+
     visited = set()
-    if str(firstNode.loc) + " " + str(firstNode.loc.row) not in visited:
-        count += 1
-        # dist_dict[getKey(loc, loc)] = (0, loc, loc)
-        dist_dict[getKey(loc, loc)] = 0
-        visited.add(str(firstNode.loc))
+    count += 1
+    # dist_dict[getKey(loc, loc)] = (0, loc, loc)
+    dist_dict[getKey(loc, loc)] = 0
+    visited.add(str(firstNode.loc))
     
 
     while queue:
         # pop from queue
-        currNode = queue.pop(0)
+        currNode = queue.popleft(0)
 
         # Loop over the directions
         for direction in Directions:
