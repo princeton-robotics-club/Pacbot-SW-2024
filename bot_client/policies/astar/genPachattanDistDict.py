@@ -1,5 +1,5 @@
 import bitstruct.c as bitstruct
-from gameState import Directions, Location, GameState
+from game_state.gameState import Directions, Location, GameState
 from collections import deque
 
 
@@ -17,7 +17,7 @@ def comp_location_pair(locA1: Location, locA2: Location, locB1: Location, locB2:
 
 def getKey(loc1: Location, loc2: Location) -> int:
     r1 = loc1.row
-    c1 = loc1.col
+    c1 = loc1.col  
     r2 = loc2.row
     c2 = loc2.col
 
@@ -25,7 +25,7 @@ def getKey(loc1: Location, loc2: Location) -> int:
         r1, c1, r2, c2 = r2, c2, r1, c1
     return int.from_bytes(bitstruct.pack('u5u5u5u5', r1, c1, r2, c2), "big")
 
-# use BFS to get dist btwn loc
+# use BFS to get dist btwn loc 
 def getDistance(loc: Location, state: GameState, dist_dict, count):
 
     # BFS queue
