@@ -15,6 +15,8 @@ from terminalColors import *
 
 # Server messages
 from serverMessage import ServerMessage
+from .ghost import Ghost, GhostColors
+from .location import Location
 
 class GameModes(IntEnum):
 	'''
@@ -31,22 +33,6 @@ GameModeColors = {
 	GameModes.CHASE:   YELLOW,
 	GameModes.SCATTER: GREEN
 }
-
-class GhostColors(IntEnum):
-	'''
-	Enum of possible ghost names
-	'''
-
-	RED    = 0
-	PINK   = 1
-	CYAN   = 2
-	ORANGE = 3
-	NONE   = 4
-
-# Scatter targets for each of the ghosts
-#               R   P   C   O
-SCATTER_ROW = [-3, -3, 31, 31]
-SCATTER_COL = [25,  2, 27,  0]
 
 class Directions(IntEnum):
 	'''
@@ -72,310 +58,6 @@ reversedDirections: dict[Directions, Directions] = {
 	Directions.NONE:  Directions.NONE
 }
 
-class Location:
-	'''
-	Location of an entity in the game engine
-	'''
-
-	def __init__(self, state) -> None: # type: ignore
-		'''
-		Construct a new location state object
-		'''
-
-		# Relevant game state
-		self.state: GameState = state
-
-		# Row and column information
-		self.rowDir: int  = 0
-		self.row: int     = 32
-		self.colDir: int  = 0
-		self.col: int     = 32
-
-	def __str__(self):
-		return f'({self.row},{self.col})'
-
-	def hash(self) -> int:
-		return self.row * 32 + self.col
-
-	def update(self, loc_uint16: int) -> None:
-		'''
-		Update a location, based on a 2-byte serialization
-		'''
-
-		# Get the row and column bytes
-		row_uint8: int = loc_uint16 >> 8
-		col_uint8: int = loc_uint16 & 0xff
-
-		# Get the row direction (2's complement of first 2 bits)
-		self.rowDir = row_uint8 >> 6
-		if self.rowDir >= 2:
-			self.rowDir -= 4
-
-		# Get the row value (last 6 bits)
-		self.row = row_uint8 & 0x3f
-
-		# Get the col direction (2's complement of first 2 bits)
-		self.colDir = col_uint8 >> 6
-		if self.colDir >= 2:
-			self.colDir -= 4
-
-		# Get the column value (last 6 bits)
-		self.col = col_uint8 & 0x3f
-
-	def at(self, row: int, col: int) -> bool:
-		'''
-		Determine whether a row and column intersect with this location
-		'''
-
-		# Check the compared position is not an empty location
-		if (row >= 31) or (col >= 28):
-			return False
-
-		# Return whether the rows and columns both match
-		return (self.row == row) and (self.col == col)
-
-	def serialize(self) -> int:
-		'''
-		Serialize this location state into a 16-bit integer (two bytes)
-		'''
-
-		# Serialize the row byte
-		row_uint8: int = (((self.rowDir & 0x03) << 6) | (self.row & 0x3f))
-
-		# Serialize the column byte
-		col_uint8: int = (((self.colDir & 0x03) << 6) | (self.col & 0x3f))
-
-		# Return the full serialization
-		return (row_uint8 << 8) | (col_uint8)
-
-	def advance(self) -> bool:
-		'''
-		Advance this location state for simulating another step transition
-		Returns if the advance was successful
-		'''
-
-		# If the current position is out of bounds, ignore it
-		if (self.row >= 31) or (self.col >= 28) or (self.row < 0) or (self.col < 0):
-			return False
-
-		# Calculate the next row and column
-		newRow = self.row + self.rowDir
-		newCol = self.col + self.colDir
-
-		# Move to the next row and column, if applicable
-		if not self.state.wallAt(newRow, newCol):
-			self.row = newRow
-			self.col = newCol
-			return True
-
-		# Return false, if the update was not successful
-		return False
-
-	def setDirection(self, direction: Directions) -> None:
-		'''
-		Given a direction enum object, set the direction of this location
-		'''
-
-		# Set the direction of this location
-		self.rowDir = D_ROW[direction]
-		self.colDir = D_COL[direction]
-
-	def getDirection(self) -> Directions:
-		'''
-		Return a direction enum object corresponding to this location
-		'''
-
-		# Return the matching direction, if applicable
-		for direction in Directions:
-			if self.rowDir == D_ROW[direction] and self.colDir == D_COL[direction]:
-				return direction
-
-		# Return none if no direction matches
-		return Directions.NONE
-
-class Ghost:
-	'''
-	Location and auxiliary info of a ghost in the game engine
-	'''
-
-	def __init__(self, color: GhostColors, state) -> None: # type: ignore
-		'''
-		Construct a new ghost state object
-		'''
-
-		# Relevant game state
-		self.state: GameState = state
-
-		# Ghost information
-		self.color: GhostColors = color
-		self.location: Location = Location(state) # type: ignore
-		self.frightSteps: int = 0
-		self.spawning: bool = bool(True)
-
-		# (For simulation) Planned next direction the ghost will take
-		self.plannedDirection: Directions = Directions.NONE
-
-	def updateAux(self, auxInfo: int) -> None:
-		'''
-		Update auxiliary info (fright steps and spawning flag, 1 byte)
-		'''
-
-		self.frightSteps = auxInfo & 0x3f
-		self.spawning = bool(auxInfo >> 7)
-
-	def serializeAux(self) -> int:
-		'''
-		Serialize auxiliary info (fright steps and spawning flag, 1 byte)
-		'''
-
-		return (self.spawning << 7) | (self.frightSteps)
-
-	def isFrightened(self) -> bool:
-		'''
-		Return whether this ghost is frightened
-		'''
-
-		return (self.frightSteps > 0)
-
-	def move(self) -> None:
-		'''
-		Update the ghost's position for simulation purposes
-		'''
-
-		# As an approximation since we don't have enough info, assume the location
-		# of the ghost will not change much if it is spawning (as it might be
-		# trapped in the ghost house) - this holds for short-term simulations into
-		# the future, but feel free to adjust it if you have a better way to
-		# predict how spawning ghosts will behave
-		if self.spawning:
-			return
-
-		# Advance the ghost's location
-		self.location.advance()
-
-		# Set the current direction to the guess of the planned direction
-		self.location.setDirection(self.plannedDirection)
-
-		# If the ghost is frightened, drop its steps by 1
-		if self.isFrightened():
-			self.frightSteps -= 1
-
-	def guessPlan(self) -> None:
-		'''
-		Use incomplete knowledge of the current game state to predict where the
-		ghosts might aim at the next step
-		'''
-
-		# For the same reason as in move(), ignore spawning ghosts during short-
-		# term projections into the future
-		if self.spawning:
-			return
-
-		# If the ghost is at an empty location, ignore it
-		if self.location.row >= 32 or self.location.col >= 32:
-			return
-
-		# Row and column at the next step
-		nextRow: int = self.location.row + self.location.rowDir
-		nextCol: int = self.location.col + self.location.colDir
-
-		# Pacman row and column
-		pacmanRow: int = self.state.pacmanLoc.row
-		pacmanCol: int = self.state.pacmanLoc.col
-		pacmanRowDir: int = self.state.pacmanLoc.rowDir
-		pacmanColDir: int = self.state.pacmanLoc.colDir
-
-		# Red ghost's location
-		redRow: int = self.state.ghosts[GhostColors.RED].location.row
-		redCol: int = self.state.ghosts[GhostColors.RED].location.col
-
-		# Target row and column
-		targetRow: int = 0
-		targetCol: int = 0
-
-		# Choose a target for the ghost based on its color
-		if self.state.gameMode == GameModes.CHASE:
-
-			# Red targets Pacman
-			if self.color == GhostColors.RED:
-				targetRow = pacmanRow
-				targetCol = pacmanCol
-
-			# Pink targets the space 4 ahead of Pacman
-			elif self.color == GhostColors.PINK:
-				targetRow = pacmanRow + 4 * pacmanRowDir
-				targetRow = pacmanCol + 4 * pacmanColDir
-
-			# Cyan targets the position of red, reflected about the position 2 spaces
-			# ahead of Pacman
-			elif self.color == GhostColors.CYAN:
-				targetRow = 2 * pacmanRow + 4 * pacmanRowDir - redRow
-				targetCol = 2 * pacmanCol + 4 * pacmanColDir - redCol
-
-			# Orange targets Pacman, but only if Pacman is farther than 8 spaces away
-			elif self.color == GhostColors.ORANGE:
-				distSqToPacman = (nextRow - pacmanRow) * (nextRow - pacmanRow) + \
-													(nextCol - pacmanCol) * (nextCol - pacmanCol)
-				targetRow = pacmanRow if (distSqToPacman < 64) else \
-											SCATTER_ROW[GhostColors.ORANGE]
-				targetCol = pacmanCol if (distSqToPacman < 64) else \
-											SCATTER_COL[GhostColors.ORANGE]
-
-		# In scatter mode, each ghost tracks a fixed target at a corner of the maze
-		if self.state.gameMode == GameModes.SCATTER:
-			targetRow = SCATTER_ROW[self.color]
-			targetCol = SCATTER_COL[self.color]
-
-		# Calculate the distance squared to the target, for all 4 moves
-		minDist = 0xfffffff
-		maxDist = -1
-		minDir  = Directions.UP
-		maxDir  = Directions.UP
-		for direction in Directions:
-			if direction != Directions.NONE:
-
-				# Avoid reversals, as ghosts are not typically allowed to reverse
-				if D_ROW[direction] + self.location.rowDir != 0 or \
-					D_COL[direction] + self.location.colDir != 0:
-
-					# Check whether this new location would be valid (not in a wall)
-					newRow = nextRow + D_ROW[direction]
-					newCol = nextCol + D_COL[direction]
-					if not self.state.wallAt(newRow, newCol):
-
-						# Compare the distance squared to the target to the current best;
-						# if it is better, choose it to be the new ghost plan
-						distSqToTarget = (newRow - targetRow) * (newRow - targetRow) + \
-															(newCol - targetCol) * (newCol - targetCol)
-						if distSqToTarget < minDist:
-							minDir  = direction
-							minDist = distSqToTarget
-						elif distSqToTarget >= maxDist:
-							maxDir  = direction
-							maxDist = distSqToTarget
-
-		# Update the best direction to be the plan
-		self.plannedDirection = minDir if (not self.isFrightened()) else maxDir
-
-class GameStateCompressed:
-	'''
-	Compressed copy of the game state, for easier storage for path planning.
-	'''
-
-	def __init__(
-		self,
-		serialized: bytes,
-		ghostPlans: dict[GhostColors, Directions]
-	) -> None:
-		'''
-		Construct a new compressed game state object
-		'''
-
-		# Serialization of the game state, in bytes
-		self.serialized: bytes = serialized
-
-		# Store tentative ghost plans
-		self.ghostPlans: dict[GhostColors, Directions] = ghostPlans
 
 class GameState:
 	'''
@@ -436,15 +118,15 @@ class GameState:
 		self.format += 'B'
 
 		# 4 * 3 bytes = 4 * (2 bytes location + 1 byte aux info)
-		self.ghosts: list[Ghost] = [Ghost(color, self) for color in GhostColors]
+		self.ghosts: list[Ghost] = [Ghost(color) for color in GhostColors]
 		self.format += 'HBHBHBHB'
 
 		# 2 byte location
-		self.pacmanLoc: Location = Location(self)
+		self.pacmanLoc: Location = Location()
 		self.format += 'H'
 
 		# 2 byte location
-		self.fruitLoc: Location = Location(self)
+		self.fruitLoc: Location = Location()
 		self.format += 'H'
 
 		# 2 bytes
@@ -886,20 +568,3 @@ class GameState:
 		# Return that Pacman was safe during this transition
 		return True
 
-def compressGameState(state: GameState) -> GameStateCompressed:
-	'''
-	Function to compress the game state into a smaller object, for easier storage
-	'''
-
-	return GameStateCompressed(state.serialize(), state.getGhostPlans())
-
-def decompressGameState(state: GameState, compressed: GameStateCompressed):
-	'''
-	Function to de-compress game state information for path planning
-	'''
-
-	# Serialization (bytes) to state
-	state.update(compressed.serialized, lockOverride=True)
-
-	# Unpack the ghost plans
-	state.updateGhostPlans(compressed.ghostPlans)

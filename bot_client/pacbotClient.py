@@ -10,7 +10,7 @@ from websockets.exceptions import ConnectionClosedError # type: ignore
 from websockets.typing import Data # type: ignore
 
 # Game state
-from gameState import GameState
+from game_state import GameState 
 
 # Decision module
 from policies.astar.decisionModule import DecisionModule
@@ -24,6 +24,8 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 # Terminal colors for formatting output text
 from terminalColors import *
+
+
 
 # Get the connect URL from the config.json file
 def getConnectURL() -> str:
