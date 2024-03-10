@@ -1,100 +1,118 @@
+""" Module providing Location class """
+
 from .constants import Directions, D_ROW, D_COL
+from .board import is_valid_location
 
 class Location:
-	'''
-	Location of an entity in the game engine
-	'''
+    '''
+    Location of an entity in the game engine
+    '''
 
-	def __init__(self, row: int = 0, col: int = 32, row_dir: int = 0, col_dir: int = 0) -> None:
-		self.row = row
-		self.col = col
-		self.row_dir = row_dir
-		self.col_dir = col_dir
+    def __init__(self, row: int = 0, col: int = 0, row_dir: int = 0, col_dir: int = 0) -> None:
+        self.row = row
+        self.col = col
+        self.row_dir = row_dir
+        self.col_dir = col_dir
 
-	def __str__(self):
-		return f'({self.row},{self.col})'
+    def __str__(self):
+        return f'({self.row},{self.col})'
 
-	def hash(self) -> int:
-		return self.row * 32 + self.col
+    def hash(self) -> int:
+        '''
+        Hashes location based on row and col
+        '''
+        return self.row * 32 + self.col
 
-	def update(self, loc_uint16: int) -> None:
-		'''
-		Update a location, based on a 2-byte serialization
-		'''
+    def update(self, loc_uint16: int) -> None:
+        '''
+        Update a location, based on a 2-byte serialization
+        '''
 
-		# Get the row and column bytes
-		row_uint8: int = loc_uint16 >> 8
-		col_uint8: int = loc_uint16 & 0xff
+        # Get the row and column bytes
+        row_uint8: int = loc_uint16 >> 8
+        col_uint8: int = loc_uint16 & 0xff
 
-		# Get the row direction (2's complement of first 2 bits)
-		self.rowDir = row_uint8 >> 6
-		if self.rowDir >= 2:
-			self.rowDir -= 4
+        # Get the row direction (2's complement of first 2 bits)
+        self.row_dir = row_uint8 >> 6
+        if self.row_dir >= 2:
+            self.row_dir -= 4
 
-		# Get the row value (last 6 bits)
-		self.row = row_uint8 & 0x3f
+        # Get the row value (last 6 bits)
+        self.row = row_uint8 & 0x3f
 
-		# Get the col direction (2's complement of first 2 bits)
-		self.colDir = col_uint8 >> 6
-		if self.colDir >= 2:
-			self.colDir -= 4
+        # Get the col direction (2's complement of first 2 bits)
+        self.col_dir = col_uint8 >> 6
+        if self.col_dir >= 2:
+            self.col_dir -= 4
 
-		# Get the column value (last 6 bits)
-		self.col = col_uint8 & 0x3f
+        # Get the column value (last 6 bits)
+        self.col = col_uint8 & 0x3f
 
-	def is_valid(self) -> bool:
-		"""
-		Check if the location is within the valid playing area of the game.
+    def at(self, row: int, col: int) -> bool:
+        
+        '''
+        Determine whether a row and column intersect with this location
+        '''
 
-		The game grid is defined as a 30x27 area.
+        return self.row == row and self.col == col
 
-		Returns:
-			bool: True if the location is within the grid, False otherwise.
-		"""
-		
-		return 0 <= self.row < 31 and 0 <= self.col < 28
-	
-	def at(self, row: int, col: int) -> bool:
-		
-		'''
-		Determine whether a row and column intersect with this location
-		'''
+    def serialize(self) -> int:
+        '''
+        Serialize this location state into a 16-bit integer (two bytes)
+        '''
 
-		return self.is_valid() and self.row == row and self.col == col
+        # Serialize the row byte
+        row_uint8: int = (((self.row_dir & 0x03) << 6) | (self.row & 0x3f))
 
-	def serialize(self) -> int:
-		'''
-		Serialize this location state into a 16-bit integer (two bytes)
-		'''
+        # Serialize the column byte
+        col_uint8: int = (((self.col_dir & 0x03) << 6) | (self.col & 0x3f))
 
-		# Serialize the row byte
-		row_uint8: int = (((self.rowDir & 0x03) << 6) | (self.row & 0x3f))
+        # Return the full serialization
+        return (row_uint8 << 8) | (col_uint8)
 
-		# Serialize the column byte
-		col_uint8: int = (((self.colDir & 0x03) << 6) | (self.col & 0x3f))
+    
+    def setDirection(self, direction: Directions) -> None:
+        '''
+        Given a direction enum object, set the direction of this location
+        '''
+        # Set the direction of this location
+        self.row_dir = D_ROW[direction]
+        self.col_dir = D_COL[direction]
 
-		# Return the full serialization
-		return (row_uint8 << 8) | (col_uint8)
+    def getDirection(self) -> Directions:
+        '''
+        Return a direction enum object corresponding to this location
+        '''
 
-	
-	def setDirection(self, direction: Directions) -> None:
-		'''
-		Given a direction enum object, set the direction of this location
-		'''
+        # Return the matching direction, if applicable
+        for direction in Directions:
+            if self.row_dir == D_ROW[direction] and self.col_dir == D_COL[direction]:
+                return direction
 
-		# Set the direction of this location
-		self.rowDir = D_ROW[direction]
-		self.colDir = D_COL[direction]
+        # Return none if no direction matches
+        return Directions.NONE
+    
+    def move(self) -> bool :
+        """
+        Simulates one step in the current direction.
+        Returns True if the transition is successful (i.e., the location moves to a valid new position).
+        
+        Returns:
+        - bool: True if the location was successfully advanced; False otherwise.
+        """
 
-	def getDirection(self) -> Directions:
-		'''
-		Return a direction enum object corresponding to this location
-		'''
+        # Check if the current position is out of bounds
+        if not is_valid_location(self.row, self.col):
+            return False
 
-		# Return the matching direction, if applicable
-		for direction in Directions:
-			if self.rowDir == D_ROW[direction] and self.colDir == D_COL[direction]:
-				return direction
+        next_row = self.row + self.row_dir
+        next_col = self.col + self.col_dir
 
-		# Return none if no direction matches
-		return Directions.NONE
+        # Check if the next position is not a wall and update the location if it's not
+        if is_valid_location(next_row, next_col):
+            self.row = next_row
+            self.col = next_col
+
+            return True
+        
+        return False
