@@ -1,15 +1,15 @@
 from enum import IntEnum
 
 class GhostColors(IntEnum):
-	'''
-	Enum of possible ghost names
-	'''
+    '''
+    Enum of possible ghost names
+    '''
 
-	RED    = 0
-	PINK   = 1
-	CYAN   = 2
-	ORANGE = 3
-	NONE   = 4
+    RED    = 0
+    PINK   = 1
+    CYAN   = 2
+    ORANGE = 3
+    NONE   = 4
 
 # Scatter targets for each of the ghosts
 #               R   P   C   O
