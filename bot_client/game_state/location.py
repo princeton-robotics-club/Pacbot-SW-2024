@@ -116,3 +116,6 @@ class Location:
             return True
         
         return False
+    
+    def isValid(self) -> bool:
+        return is_valid_location(self.row, self.col)

@@ -36,12 +36,11 @@ NROWS = len(wallArr)
 NCOLS = len(bin(wallArr[0])[2:])
 
 def wallAt(row: int, col: int) -> bool:
-	'''
-	Helper function to check if a wall is at a given location
-	'''
-
+    '''
+    Helper function to check if a wall is at a given location
+    '''
     # Return whether there is a wall at the location
-    return 0<=row<NROWS and 0<=col<NCOLS and (wallArr[row] & (1 << col))
+    return 0<=row<NROWS and 0<=col<NCOLS and bool(wallArr[row] & (1 << col))
 
 def is_valid_location(row: int, col: int) -> bool:
 

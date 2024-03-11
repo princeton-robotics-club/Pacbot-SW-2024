@@ -1,7 +1,7 @@
+from collections import deque
 import bitstruct.c as bitstruct
 from game_state.gameState import Directions, Location, GameState
-from collections import deque
-
+from game_state import wallAt
 
 class Node:
     def __init__(self, loc: Location, dist: int):
@@ -43,7 +43,7 @@ def getDistance(loc: Location, state: GameState, dist_dict, count):
 
     while queue:
         # pop from queue
-        currNode = queue.popleft(0)
+        currNode = queue.popleft()
 
         # Loop over the directions
         for direction in Directions:
@@ -58,7 +58,7 @@ def getDistance(loc: Location, state: GameState, dist_dict, count):
             nextNode.loc.col = currNode.loc.col
             nextNode.loc.row = currNode.loc.row
             nextNode.loc.setDirection(direction)
-            valid = nextNode.loc.advance()
+            valid = nextNode.loc.move()
 
             # avoid same node twice
             # check this is a valid move
@@ -82,7 +82,7 @@ def main():
 
     for col in range(28):
         for row in range(31):
-            if state.wallAt(col=col, row=row):
+            if wallAt(col=col, row=row):
                 wall_count += 1
                 continue
             loc: Location = Location(state)
