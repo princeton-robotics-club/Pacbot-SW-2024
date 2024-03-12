@@ -454,6 +454,7 @@ class AStarPolicy:
         )
 
         if needNewPelletTarget:
+            print("Pellet Acquired")
             pelletTarget = self.getNearestPellet()
 
         # Select a target
@@ -468,32 +469,13 @@ class AStarPolicy:
             # Reset to the current compressed state
             decompressGameState(self.state, currNode.compressedState)
 
-            # If the g-cost of this node is high enough or we reached the target,
-            # make the moves and return
-
-            # if currNode.pelletTargetCaught and (victimColor == GhostColors.NONE):
-
-            #     self.queueEntireBuffer(currNode)
-
-            #     print("target caught")
-            #     pelletTarget = self.getNearestPellet()
-
-            #     print(
-            #         ["RED", "PINK", "CYAN", "ORANGE", "NONE"][victimColor], pelletTarget
-            #     )
-            #     return GhostColors.NONE, pelletTarget
-
-            # Nothing was captured but move should be continued
-            # Could lower this if algorithm is optimized?
-
             if currNode.bufLength == 8:
-
-                self.queueEntireBuffer(currNode)
-
-                print(
-                    ["RED", "PINK", "CYAN", "ORANGE", "NONE"][victimColor], pelletTarget
-                )
-                return victimColor, pelletTarget
+                for index in range(currNode.bufLength//2):
+                    self.state.queueAction(currNode.delayBuf[index], currNode.directionBuf[index])
+                    print(
+                        ["RED", "PINK", "CYAN", "ORANGE", "NONE"][victimColor], pelletTarget
+                    )
+                    return victimColor, pelletTarget
 
             # Determines if waiting (none) is allowed as a move
             waitAllowed = victimColor == GhostColors.NONE
@@ -537,6 +519,7 @@ class AStarPolicy:
                 if victimCaughtInTheory:
                     print(f"{CYAN}{GhostColors(victimColor).name} Ghost Caught In Theory! {NORMAL}")
                     currNode.directionBuf.append(direction)
+                    currNode.delayBuf.append(predicted_delay)
                     currNode.bufLength += 1
                     self.queueEntireBuffer(currNode)
                     return victimColor, pelletTarget
@@ -557,6 +540,7 @@ class AStarPolicy:
                 if pelletTargetCaught:
                     print(f"{pelletTarget} Pellet Caught (In Theory)")
                     currNode.directionBuf.append(direction)
+                    currNode.delayBuf.append(predicted_delay)
                     currNode.bufLength += 1
                     self.queueEntireBuffer(currNode)
                     pelletTarget = self.getNearestPellet()
@@ -585,10 +569,7 @@ class AStarPolicy:
                         )
                         * self.fCostMultiplier()
                     ),
-                    gCost=currNode.gCost
-                    + 2
-                    + 2 * ((not ateNormalPellet) and (victimExists))
-                    + 2 * victimExists,
+                    gCost=currNode.gCost+2,
                     directionBuf=currNode.directionBuf + [direction],
                     delayBuf=currNode.delayBuf + [predicted_delay],
                     bufLength=currNode.bufLength + 1,
@@ -603,6 +584,5 @@ class AStarPolicy:
         return victimColor, pelletTarget
 
     def queueEntireBuffer(self, currNode):
-
         for index in range(currNode.bufLength):
-            self.state.queueAction(1, currNode.directionBuf[index])
+            self.state.queueAction(currNode.delayBuf[index], currNode.directionBuf[index])

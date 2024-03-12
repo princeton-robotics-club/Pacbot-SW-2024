@@ -72,7 +72,7 @@ class DecisionModule:
 
             # Figure out which actions to take, according to the policy
             if self.state.gameMode != GameModes.PAUSED:
-                victimColor, pelletTarget = await self.policy.act(1, victimColor, pelletTarget)
+                victimColor, pelletTarget = await self.policy.act(3, victimColor, pelletTarget)
 
             # Unlock the game state
             self.state.unlock()
