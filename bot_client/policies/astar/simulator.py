@@ -45,7 +45,7 @@ class Simulator:
             # Pacman row and column
             pacmanRow: int = self.game_state.pacmanLoc.row
             pacmanCol: int = self.game_state.pacmanLoc.col
-            pacmanrow_dir: int = self.self.game_state.pacmanLoc.row_dir
+            pacmanrow_dir: int = self.game_state.pacmanLoc.row_dir
             pacmancol_dir: int = self.game_state.pacmanLoc.col_dir
 
             # Red ghost's location

@@ -15,3 +15,6 @@ class GhostColors(IntEnum):
 #               R   P   C   O
 SCATTER_ROW = [-3, -3, 31, 31]
 SCATTER_COL = [25,  2, 27,  0]
+
+def getGhostNameFromColor(color:int):
+    return GhostColors(color).name

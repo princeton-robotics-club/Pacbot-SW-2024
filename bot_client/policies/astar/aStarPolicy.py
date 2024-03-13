@@ -7,6 +7,7 @@ import math
 
 # Game state
 from game_state import *
+from game_state.constants.ghost_enums import getGhostNameFromColor
 
 # Cool Colors
 from terminalColors import *
@@ -98,9 +99,10 @@ def distSqL3(loc1: Location, loc2: Location) -> int:
     pacDist = distL3(loc1, loc2)
     return pacDist * pacDist
 
-def inv_dist_cost (dist:int, a, b ) -> float:
+
+def inv_dist_cost(dist: int, a, b) -> float:
     """
-    Exponentially increases as dist decreases. 
+    Exponentially increases as dist decreases.
     Returns a*e^(b/x)
     if dist = 0 returns INF
     """
@@ -200,20 +202,23 @@ class AStarPolicy:
         # Check bounds
         first = self.state.pacmanLoc
 
-        #  BFS traverse
+        #  BFS traverse for nearest pellet
         queue = deque([first])
-        visited = set([first.hash()])
+        visited = {first.hash()}
+        
+        # print("starting bfs")
 
         while queue:
 
             # pop from queue
             currLoc = queue.popleft()
+            
+            # print(currLoc)
 
             # Base Case: Found a pellet
             if (
                 is_valid_location(currLoc.row, currLoc.col)
                 and self.state.pelletAt(currLoc.row, currLoc.col)
-                and not self.state.superPelletAt(currLoc.row, currLoc.col)
             ):
                 # print("Found Pellet")
                 return currLoc
@@ -282,60 +287,18 @@ class AStarPolicy:
         # Return the closest scared ghost
         return closest
 
-    # def hCost(self) -> int:
-    #     # # make sure pacman in bounds (TODO: Why do we have to do this?)
-    #     # if 0 > self.state.pacmanLoc.row or 32 <= self.state.pacmanLoc.row or 0 > self.state.pacmanLoc.col or 28 <= self.state.pacmanLoc.col:
-    #     #     return 999999999
-
-    #     # Heuristic cost for this location
-    #     hCostTarget = 0
-
-    #     # Heuristic cost to estimate ghost locations
-    #     hCostGhost = 0
-
-    #     # Catching frightened ghosts
-    #     hCostScaredGhost = 0
-
-    #     # Chasing fruit
-    #     hCostFruit = 0
-
-    #     # Add a penalty for being close to the ghosts
-    #     for ghost in self.state.ghosts:
-    #         if not ghost.spawning:
-    #             if not ghost.isFrightened():
-    #                 hCostGhost += int(
-    #                     64 / max(self.distSq(
-    #                         self.state.pacmanLoc,
-    #                         ghost.location
-    #                     ), 1)
-    #                 )
-    #             else:
-    #                 hCostScaredGhost += self.dist(self.state.pacmanLoc, ghost.location)
-
-    #     # Check whether fruit exists, and then add it to target
-    #     if self.state.fruitSteps > 0:
-    #         hCostFruit = self.dist(self.state.pacmanLoc, self.state.fruitLoc)
-
-    #     # If there are frightened ghosts, chase them
-    #     if hCostScaredGhost > 0:
-    #         return int(hCostTarget + hCostGhost + hCostScaredGhost + hCostFruit)
-
-    #     # Otherwise, chase the target
-    #     hCostTarget = self.dist(self.state.pacmanLoc, self.target)
-    #     return int(hCostTarget + hCostGhost + hCostFruit)
-
-    def hCostExtend(self, gCost: int, bufLen: int, victimColor: GhostColors) -> int:
+    def hCostExtend(self, victimColor: GhostColors) -> int:
         """
         Extends the existing g_cost delta to estimate a new h-cost due to
         Pachattan distance and estimated speed
         """
 
         # GAMEOVER handling - return value doesn't matter
-        if not (self.state.pacmanLoc.isValid() and self.target.isValid()):
-            return 10000000
+        if not self.state.pacmanLoc.isValid() or not self.target.isValid():
+            return 0
 
         # Dist to target
-        distTarget: int = self.dist(self.state.pacmanLoc, self.target)
+        distPellet: int = self.dist(self.state.pacmanLoc, self.target)
         # if self.fCostMultiplier() < 16 and distTarget == 0:
         #     return -10000000
 
@@ -358,17 +321,14 @@ class AStarPolicy:
         dist: int = (
             distScared
             if (distScared < INF)
-            else (distTarget if (distTarget < distFruit // 20) else distFruit)
+            else (distPellet if (distPellet < distFruit // 20) else distFruit)
         )
-        gCostPerStep: float = 2
+        # gCostPerStep: float = 2
 
         # Return the result: (g-cost) / (buffer length) * (dist to target)
-        return int(gCostPerStep * dist)
+        return dist
 
     def fCostMultiplier(self) -> float:
-
-        # Constant for the multiplier
-        # K: int = 1
 
         # Multiplier addition term
         multTerm: int = 0
@@ -380,23 +340,14 @@ class AStarPolicy:
         for ghost in self.state.ghosts:
             if not ghost.spawning and not ghost.isFrightened():
                 dist_to_ghost = self.dist(self.state.pacmanLoc, ghost.location)
-                if dist_to_ghost <= 5:
-                    # multTerm += int(100 << (5 - dist_to_ghost))
-                    multTerm += inv_dist_cost(dist_to_ghost, .1, 8.0) # type: ignore
-                    
-                    # print(
-                    #     f"{RED}{GhostColors(ghost.color).name} ghost is close! {dist_to_ghost} units away{NORMAL}"
-                    # )
+                if dist_to_ghost <= 6:
+                    multTerm += inv_dist_cost(dist_to_ghost, 0.1, 50.0)  # type: ignore
 
-        # # avoid the lair
-        # if dist_to_lair < 5:
-        #     multTerm += int(
-        #                 K << (5-dist_to_lair)
-        #             )
-
-        return 1 + multTerm
+        return multTerm
 
     def selectTarget(self, pelletTarget: Location) -> None:
+        
+        #TODO: Change ordering to do the route at the beginning
 
         chase = self.state.gameMode == GameModes.CHASE
 
@@ -427,12 +378,11 @@ class AStarPolicy:
 
         # Make a priority queue of A-Star Nodes
         priorityQueue: list[AStarNode] = []
-        initialCompressedState = compressGameState(self.state)
 
         # Construct an initial node
         initialNode = AStarNode(
             compressedState=compressGameState(self.state),
-            fCost=self.hCostExtend(0, 0, victimColor),
+            fCost=self.hCostExtend(victimColor),
             gCost=0,
             directionBuf=[],
             delayBuf=[],
@@ -442,20 +392,16 @@ class AStarPolicy:
         # Add the initial node to the priority queue
         heappush(priorityQueue, initialNode)
         visited = {self.state.pacmanLoc.hash()}
-        
+
         # We want a target or the last one is unavailable
         if victimColor == GhostColors.NONE or self.victimNearUnfrightenedGhost(victimColor):
             victimColor = self.getNearestVictim()
-        else:
+        elif self.state.ghosts[victimColor].spawning or not self.state.ghosts[victimColor].isFrightened():
             # Did we catch the last ghost?
-            if (
-            not self.state.ghosts[victimColor].isFrightened()
-            or self.state.ghosts[victimColor].spawning
-            ):
-                print(
-                    f"{GREEN}{GhostColors(victimColor).name} confirmed catch!{NORMAL}"
+            print(
+                    f"{GREEN}{GhostColors(victimColor).name} catch at {self.state.pacmanLoc}!{NORMAL} or frighten faded"
                 )
-                victimColor = self.getNearestVictim()
+            victimColor = self.getNearestVictim()
 
         # Select a new target, if applicable
         needNewPelletTarget = (
@@ -472,29 +418,37 @@ class AStarPolicy:
 
         # Select a target
         self.selectTarget(pelletTarget)
-        
 
         # Keep proceeding until a break point is hit
         while priorityQueue:
 
             # Pop the lowest f-cost node
             currNode = heappop(priorityQueue)
-            
-             # The safest (lowest cost) route that also catches a target:
-            if currNode.victimCaught or currNode.pelletTargetCaught:
-                self.queueEntireBuffer(currNode)
-                return victimColor, pelletTarget
-            
+
             # Reset to the current compressed state
             decompressGameState(self.state, currNode.compressedState)
-            
-            if currNode.bufLength == 6:
-                for index in range(currNode.bufLength//2):
-                    self.state.queueAction(currNode.delayBuf[index], currNode.directionBuf[index])
+
+            # The safest (lowest cost) route that also catches a target:
+            if currNode.victimCaught or currNode.pelletTargetCaught:
+                self.queueEntireBuffer(currNode)
+                if currNode.victimCaught:
                     print(
-                        ["RED", "PINK", "CYAN", "ORANGE", "NONE"][victimColor], pelletTarget
+                        f"{RED}I'm planning to eat {getGhostNameFromColor(victimColor)} at {self.state.pacmanLoc}{NORMAL}"
                     )
-                    return victimColor, pelletTarget
+                return victimColor, pelletTarget
+
+            if currNode.bufLength == 8:
+                
+                for index in range(currNode.bufLength // 2):
+                    self.state.queueAction(
+                        currNode.delayBuf[index], currNode.directionBuf[index]
+                    )
+                    
+                print(
+                    ["RED", "PINK", "CYAN", "ORANGE", "NONE"][victimColor],
+                    pelletTarget,
+                )
+                return victimColor, pelletTarget
 
             # Determines if waiting (none) is allowed as a move
             waitAllowed = victimColor == GhostColors.NONE
@@ -514,20 +468,20 @@ class AStarPolicy:
                 # new position is either not reachable-  move(), or not safe - safetyCheck()
                 if not self.state.pacmanLoc.move() or not self.state.safetyCheck():
                     continue
-                
+
                 # we already visited this tile
                 if self.state.pacmanLoc.hash() in visited:
                     continue
-                
+
                 visited.add(self.state.pacmanLoc.hash())
-                    
+
                 for curr_ghost in self.state.ghosts:
                     curr_ghost.location.move()
 
                 self.state.collectPellet(
                     self.state.pacmanLoc.row, self.state.pacmanLoc.col
                 )
-                
+
                 npBefore = self.state.numPellets()
                 nspBefore = self.state.numSuperPellets()
 
@@ -540,12 +494,14 @@ class AStarPolicy:
                 ) and self.state.ghosts[victimColor].location.at(
                     self.state.pacmanLoc.row, self.state.pacmanLoc.col
                 )
-                
+
                 # A state found that catches a ghost
                 if victimCaughtInTheory:
-                    print(f" {CYAN}{GhostColors(victimColor).name} route discovered! {NORMAL}")
-                
-                # Determines if the target was caught
+                    print(
+                        f"{CYAN}{GhostColors(victimColor).name} route discovered! {NORMAL}"
+                    )
+
+                # Determines if the target wa  caught
                 pelletTargetCaughtInTheory = (
                     (not self.state.pelletAt(pelletTarget.row, pelletTarget.col))
                     or pelletTarget.at(
@@ -559,7 +515,7 @@ class AStarPolicy:
                 )
 
                 # # can't immediately return and must instead flag
-                # # because catching a pellet could override running from unfrightened ghost 
+                # # because catching a pellet could override running from unfrightened ghost
                 # if pelletTargetCaughtInTheory:
                 #     print(f"{pelletTarget} pellet route discovered!")
 
@@ -567,26 +523,25 @@ class AStarPolicy:
                 # self.selectTarget(pelletTarget)
 
                 # Determine if there is a frightened ghost to chase
-                victimExists = victimColor == GhostColors.NONE
+                # victimExists = victimColor == GhostColors.NONE
+
+                fCost = int(
+                    currNode.gCost
+                    + self.hCostExtend(victimColor)
+                    + self.fCostMultiplier()
+                )
                 
-                fCost=int(
-                        (
-                            self.hCostExtend(
-                                currNode.gCost, currNode.bufLength, victimColor
-                            )
-                            + currNode.gCost
-                            + 1
-                        )
-                        * self.fCostMultiplier()
-                    )
-                
+                # needs to override the distance gcost + fcost but not override the inv_dist to prevent crashes
+                if victimCaughtInTheory:
+                    fCost-=50
+
                 # print(fCost,self.state.pacmanLoc)
 
                 # If the state is valid, add it to the priority queue
                 nextNode = AStarNode(
                     compressGameState(self.state),
                     fCost=fCost,
-                    gCost=currNode.gCost+2,
+                    gCost=currNode.gCost + 1,
                     directionBuf=currNode.directionBuf + [direction],
                     delayBuf=currNode.delayBuf + [predicted_delay],
                     bufLength=currNode.bufLength + 1,
@@ -602,4 +557,11 @@ class AStarPolicy:
 
     def queueEntireBuffer(self, currNode):
         for index in range(currNode.bufLength):
-            self.state.queueAction(currNode.delayBuf[index], currNode.directionBuf[index])
+            self.state.queueAction(
+                currNode.delayBuf[index], currNode.directionBuf[index]
+            )
+
+def printGhostLocations(state:GameState):
+    print("predicted locations")
+    for ghost in state.ghosts:
+        print(getGhostNameFromColor(ghost.color), ghost.location)
