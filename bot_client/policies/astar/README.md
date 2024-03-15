@@ -24,3 +24,24 @@ flowchart
 	n9 -- "Chase" --> n11
 	n4 -- "No" --> n12
  ```
+
+Flowchart.fun input
+ Receive Game State
+  Any Frightened Ghosts? .border_dashed
+    Yes: Move to Nearest Ghost .color_yellow #moveghost 
+    No: GameMode? .border_dashed
+      Scatter: Dangerous Pellets Collected? .border_dashed
+        Yes: Move to Pellet .color_yellow
+        No: Continue Startup Sequence .color_yellow
+      Chase: At Superpellet Waiting Spot? .border_dashed
+        Yes: Frightened Ghosts Very Close?
+          Yes: Move To Superpellet .color_yellow
+          No: Wait for Ghosts .color_yellow
+        No: Move To Superpellet Waiting Spot .color_yellow
+      
+      
+      
+      
+        
+        
+
