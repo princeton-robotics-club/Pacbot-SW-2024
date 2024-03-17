@@ -125,3 +125,6 @@ class Location:
     def setLocation(self,row,col) -> None:
         self.row = row
         self.col = col
+        
+    def atLocation(self, l2: 'Location') -> bool:
+        return self.row == l2.row and self.col == l2.col

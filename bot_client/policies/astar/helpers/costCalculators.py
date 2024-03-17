@@ -2,7 +2,7 @@ from typing import List
 import math
 from game_state.ghost import Ghost
 from game_state.location import Location
-from policies.astar.distanceHelpers import distL3
+from policies.astar.helpers.distanceHelpers import distL3
 
 
 def penaltyCost(currLoc: Location, ghosts: List[Ghost]):
@@ -19,8 +19,8 @@ def penaltyCost(currLoc: Location, ghosts: List[Ghost]):
     for ghost in ghosts:
         if not ghost.spawning and not ghost.isFrightened():
             dist_to_ghost = distL3(currLoc, ghost.location)
-            if dist_to_ghost <= 6:
-                cost += inv_dist_cost(dist_to_ghost, 0.1, 50.0)  # type: ignore
+            if dist_to_ghost <= 3:
+                cost += inv_dist_cost(dist_to_ghost)  # type: ignore
 
     return cost
 
@@ -70,10 +70,10 @@ def hCost(currLoc: Location, target: Location) -> int:
         # # Return the result: (g-cost) / (buffer length) * (dist to target)
         # return dist
     
-def inv_dist_cost(dist: int, a, b) -> float:
+def inv_dist_cost(dist: int) -> float:
     """
     Exponentially increases as dist decreases.
     Returns a*e^(b/x)
     if dist = 0 returns 0
     """
-    return int(a * math.exp(b / dist)) if dist else 0
+    return (5-dist) * 100

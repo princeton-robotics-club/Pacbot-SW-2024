@@ -3,13 +3,18 @@
 from heapq import heappush, heappop
 from collections import deque
 
+
 # Game state
 from game_state import *
 from game_state.constants.ghost_enums import getGhostNameFromColor
 
 # Cool Colors
 from policies.astar.helpers.costCalculators import hCost, penaltyCost
-from policies.astar.helpers.targetSelection import selectTarget
+from policies.astar.helpers.superpelletHelpers import moveToSuperPellet, waitingForGhosts
+from policies.astar.helpers.targetSelection import (
+    getNearestUnfrightenedGhostLocation,
+    selectPelletTarget,
+)
 from terminalColors import *
 
 # Distance helpers
@@ -230,7 +235,7 @@ class AStarPolicy:
 
         # Dist to target
         distPellet: int = self.dist(self.state.pacmanLoc, self.target)
-        
+
         if self.inStartingMode:
             return distPellet
         # if self.fCostMultiplier() < 16 and distTarget == 0:
@@ -282,11 +287,17 @@ class AStarPolicy:
 
     #     return multTerm
 
-   
-
     async def act(
         self, predicted_delay: int, victimColor: GhostColors, pelletTarget: Location
     ) -> tuple[GhostColors, Location]:
+        
+        # sitting next to superPellet, waiting for ghosts to come towards us
+        if waitingForGhosts(self.state, victimColor):
+            print("nearest", getNearestUnfrightenedGhostLocation(self.state.pacmanLoc, self.state.ghosts))
+            if getNearestUnfrightenedGhostLocation(self.state.pacmanLoc, self.state.ghosts) <= 2:
+                print("LETS MOVE")
+                moveToSuperPellet(self.state, 3)
+            return victimColor, pelletTarget
 
         # Make a priority queue of A-Star Nodes
         priorityQueue: list[AStarNode] = []
@@ -319,9 +330,7 @@ class AStarPolicy:
             )
             victimColor = self.getNearestVictim()
         # Our targeted ghost is near an unfrightened one
-        elif self.victimNearUnfrightenedGhost(
-            victimColor
-        ):
+        elif self.victimNearUnfrightenedGhost(victimColor):
             victimColor = self.getNearestVictim()
 
         # Select a new target, if applicable
@@ -338,7 +347,7 @@ class AStarPolicy:
             pelletTarget = self.getNearestPellet()
 
         # Select a target
-        self.target = selectTarget(self.state, victimColor, pelletTarget)
+        self.target = selectPelletTarget(self.state, victimColor, pelletTarget)
 
         # Keep proceeding until a break point is hit
         while priorityQueue:
@@ -358,7 +367,7 @@ class AStarPolicy:
                     )
                 return victimColor, pelletTarget
 
-            if currNode.bufLength == 8:
+            if currNode.bufLength == 6:
 
                 for index in range(currNode.bufLength // 2):
                     self.state.queueAction(
@@ -418,8 +427,8 @@ class AStarPolicy:
 
                 # Determines if the target wa  caught
                 pelletTargetCaughtInTheory = (
-                    (not self.state.pelletAt(pelletTarget.row, pelletTarget.col))
-                    or pelletTarget.at(
+                    (not self.state.pelletAt(self.target.row, self.target.col))
+                    or self.target.at(
                         self.state.pacmanLoc.row, self.state.pacmanLoc.col
                     )
                     or (
@@ -435,21 +444,26 @@ class AStarPolicy:
                 #     print(f"{pelletTarget} pellet route discovered!")
 
                 # # Select a new target
-                self.target = selectTarget(self.state, victimColor, pelletTarget)
+                self.target = selectPelletTarget(self.state, victimColor, pelletTarget)
 
                 # Determine if there is a frightened ghost to chase
                 # victimExists = victimColor == GhostColors.NONE
-                nextGCost = currNode.gCost + penaltyCost(self.state.pacmanLoc, self.state.ghosts) + 1
+                nextGCost = (
+                    currNode.gCost
+                    + penaltyCost(self.state.pacmanLoc, self.state.ghosts)
+                    + 1
+                )
                 nextHCost = hCost(self.state.pacmanLoc, self.target)
-                nextFCost = nextGCost+nextHCost
-              
-                # needs to override the distance gcost + fcost but not override the inv_dist to prevent crashes
-                if victimCaughtInTheory:
-                    fCost -= 50
-                    print(
-                        f"{CYAN}{GhostColors(victimColor).name} route discovered! {NORMAL}"
-                    )
+                nextFCost = nextGCost + nextHCost
 
+
+                # needs to override the distance gcost + fcost but not override the inv_dist to prevent crashes
+                if victimCaughtInTheory or pelletTargetCaughtInTheory:
+                    nextFCost -= 200
+                    # print(
+                    #     f"{CYAN}{GhostColors(victimColor).name} route discovered! {NORMAL}"
+                    # )
+                    
                 # If the state is valid, add it to the priority queue
                 nextNode = AStarNode(
                     compressGameState(self.state),
@@ -480,4 +494,3 @@ def printGhostLocations(state: GameState):
     for ghost in state.ghosts:
         print(getGhostNameFromColor(ghost.color), ghost.location)
         print(getGhostNameFromColor(ghost.color), ghost.spawning)
-        
