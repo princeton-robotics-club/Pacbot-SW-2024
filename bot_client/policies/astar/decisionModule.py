@@ -8,7 +8,7 @@ import asyncio
 from game_state import GameState, GameModes, GhostColors, Location
 
 # A-Star Policy
-from policies.astar.aStarPolicy import AStarPolicy, newLocation
+from policies.astar.aStarPolicy import AStarPolicy
 
 # Get the FPS of the server from the config.json file
 def getGameFPS() -> int:
@@ -35,7 +35,7 @@ class DecisionModule:
         self.state = state
 
         # Policy object, with the game state
-        self.policy = AStarPolicy(state, newLocation(5, 21))
+        self.policy = AStarPolicy(state, Location(5, 21))
 
     async def decisionLoop(self) -> None:
         '''

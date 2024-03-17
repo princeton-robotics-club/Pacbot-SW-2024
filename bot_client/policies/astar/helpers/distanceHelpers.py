@@ -45,4 +45,3 @@ def distL3(loc1: Location, loc2: Location) -> int:
 def distSqL3(loc1: Location, loc2: Location) -> int:
     pacDist = distL3(loc1, loc2)
     return pacDist * pacDist
-
