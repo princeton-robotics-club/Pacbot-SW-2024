@@ -139,7 +139,6 @@ func (ge *GameEngine) RunLoop() {
 		// Re-serialize the current state
 		serLen = ge.state.serFull(outputBuf, 0)
 
-
 		/* STEP 4: Write the serialized game state to the output channel */
 
 		// Check if a write will be blocked, and try to write the serialized state
@@ -160,7 +159,8 @@ func (ge *GameEngine) RunLoop() {
 		}
 
 		/* STEP 5: Read the input channel and update the game state accordingly */
-		read_loop: for {
+	read_loop:
+		for {
 			select {
 			// If we get a message from the web broker, handle it
 			case msg := <-ge.webInputCh:

@@ -1,5 +1,6 @@
 # Heap Queues
 from heapq import heappush, heappop
+import time
 
 # Game state
 from gameState import *
@@ -49,6 +50,14 @@ class DistTypes(IntEnum):
 # 	"17,9","17,10","17,11","17,12","17,13","17,14","17,15","17,16","17,17","17,18",
 # }
 
+class Quadrants(IntEnum):
+	'''
+	Enum of quadrants
+	'''
+	Q1 = 0
+	Q2 = 1
+	Q3 = 2
+	Q4 = 3
 
 QUAD_WIDTH  = 14
 QUAD_HEIGHT = 15
@@ -56,24 +65,36 @@ QUAD_HEIGHT = 15
 def getQuadCoord(loc: Location) -> tuple:
 	return loc.row // 15, loc.col // 14
 
-def getQuadrant(loc: Location) -> str:
+def getQuadrant(loc: Location) -> Quadrants:
 	row = loc.row
 	col = loc.col
 	if row <= QUAD_HEIGHT and col <= QUAD_WIDTH:
-		return 'Q1'
+		return Quadrants.Q1
 
   # quadrant 2 (topright)
 	if row <= QUAD_HEIGHT and col > QUAD_WIDTH:
-		return 'Q2'
+		return Quadrants.Q2
 
   # quadrant 3 (bottomleft)
 	if row > QUAD_HEIGHT and col <= QUAD_WIDTH:
-		return 'Q3'
+		return Quadrants.Q3
 
   # quadrant 4 (bottom right)
 	if row > QUAD_HEIGHT and col > QUAD_WIDTH:
-		return 'Q4'
+		return Quadrants.Q4
 
+def getNeighborQuadrants(quadrant: Quadrants) -> list[Quadrants]:
+	if quadrant == Quadrants.Q1:
+		return [Quadrants.Q2, Quadrants.Q3]
+
+	if quadrant == Quadrants.Q2:
+		return [Quadrants.Q1, Quadrants.Q4]
+
+	if quadrant == Quadrants.Q3:
+		return [Quadrants.Q1, Quadrants.Q4]
+
+	if quadrant == Quadrants.Q4:
+		return [Quadrants.Q2, Quadrants.Q3]
 
 # Create new location with row, col
 def newLocation(row: int, col: int):
@@ -210,12 +231,37 @@ class AStarPolicy:
 
 
 		# > USED FOR TARGETING, FOR ENSURING COMPUTATION ISNT DONT EVERY act()
-		self.count = 0
-		self.cleaned_quadrants = []
+		self.count : int = 0
+		self.cleaned_quadrants : list = []
 
-		self.current_quadrant = []
+		self.current_quadrant : Quadrants = getQuadrant(self.state.pacmanLoc)
 
+		# store count of each quadrant to prioritize quadrant with least pellets first
+		self.quadrant_pellets : dict[Quadrants, list[tuple[int]]] = {
+			Quadrants.Q1:QUAD_PELLET_LOCS[int(Quadrants.Q1)],
+			Quadrants.Q2:QUAD_PELLET_LOCS[int(Quadrants.Q2)],
+			Quadrants.Q3:QUAD_PELLET_LOCS[int(Quadrants.Q3)],
+			Quadrants.Q4:QUAD_PELLET_LOCS[int(Quadrants.Q4)]
+		}
 
+	def pelletAtSafe(self, row: int, col:int) -> bool:
+		if self.state.wallAt(row, col):
+			return False
+
+		return self.state.pelletAt(row, col)
+
+	# filters out dead pellets
+	def recomputePelletCounts(self) -> None:
+		for quadrant in Quadrants:
+			remaining = []
+			for row, col in self.quadrant_pellets[quadrant]:
+				if self.state.pelletAt(row, col):
+					remaining.append((row, col))
+
+			self.quadrant_pellets[quadrant] = remaining
+
+			if len(remaining) == 0:
+				self.cleaned_quadrants.append(quadrant)
 
 	def getNearestPellet(self) -> Location:
 
@@ -258,8 +304,55 @@ class AStarPolicy:
 		print('No nearest...')
 		return first
 
-	def pelletAtSafe(self, row, col):
-		if self.state.wallAt(row, col):
+	def getClosestPelletInQuadrant(self, currentLoc: Location, quadrant: Quadrants) -> Location:
+		if len(self.quadrant_pellets[quadrant]) == 0:
+			return None
+
+		bestPellet = self.quadrant_pellets[quadrant][0]
+		#print(bestPellet)
+		bestDist   = self.dist(newLocation(*bestPellet), currentLoc)
+		for row, col in self.quadrant_pellets[quadrant]:
+			d = self.dist(newLocation(row, col), currentLoc)
+			if d < bestDist:
+				bestDist = d
+				bestPellet = row, col
+
+		return newLocation(*bestPellet)
+
+	def getNextPellet(self, currentLoc: Location) -> Location:
+		self.recomputePelletCounts()
+
+		# get current quadrant of pacman
+		quadrant = getQuadrant(currentLoc)
+
+		# get all pellets in current quadrant
+		pellets = self.quadrant_pellets[quadrant]
+
+		# case: no pellets in current quadrant
+		if len(self.quadrant_pellets[quadrant]) == 0:
+
+			# move to neighboring quadrant (want to avoid diagonal quadrant movement)
+			n1, n2 = getNeighborQuadrants(quadrant)
+
+			# choose quadrant with less pellets
+			if len(self.quadrant_pellets[n1]) > 0 and len(self.quadrant_pellets[n1]) < len(self.quadrant_pellets[n2]):
+				quadrant = n1
+			elif len(self.quadrant_pellets[n2]) > 0:
+				quadrant = n2
+
+			# must mean pellets are are in diagonal quadrant
+			else:
+				all_quadrants = [int(q) for q in Quadrants]
+				all_quadrants.remove(quadrant)
+				all_quadrants.remove(n1)
+				all_quadrants.remove(n2)
+
+				quadrant = all_quadrants[0]
+
+			# return closest pellet in quadrant
+			return self.getClosestPelletInQuadrant(currentLoc, self.current_quadrant)
+
+		return self.getClosestPelletInQuadrant(currentLoc, self.current_quadrant)
 
 	def scaryVictim(self, victimColor: GhostColors) -> bool:
 
@@ -489,38 +582,6 @@ class AStarPolicy:
 		#	else:
 		#		counter += 1
 
-		# > NEW TARGETING
-		if self.count == 20 or \
-				self.state.pacmanLoc.row == self.target.row and \
-				self.state.pacmanLoc.col == self.target.col:
-			quadrant = getQuadrant(self.state.pacmanLoc)
-
-			# grab pellet locations and filter out empty locations
-			pellets = QUAD_PELLET_LOCS[quadrant].copy()
-			filtered_pellets = filter(lambda loc: self.pelletAtSafe(loc[0], loc[1]), pellets)
-
-			# if quadrant empty, move to next quadrant
-			if len(filtered_pellets) == 0:
-
-				# find next closest quadrant
-				available_quadrants = set(['Q1', 'Q2', 'Q3', 'Q4']).difference(self.cleaned_quadrants)
-
-				# compute location to bring pacbot into best quadrant (quadrant center)
-
-
-
-			# iterate through and find closest pellet of current quadrant
-			for pellet in filtered_pellets:
-				...
-
-
-			self.count = 0
-		else:
-			self.count += 1
-
-
-
-
 		print("-"*15)
 		print("expected: " + str(self.expectedLoc))
 		if str(self.expectedLoc) != str(self.state.pacmanLoc):
@@ -543,11 +604,25 @@ class AStarPolicy:
 
 		realPacLoc = self.state.pacmanLoc
 
+		# flag for first iteration
+		firstIt = True
+
 		# Lag for first iteration
 		firstItLag = 0
 
 		# Lag for turns
 		turnLag = 0
+
+
+		#for quadrant in self.quadrant_pellets:
+		#	good = 0
+		#	bad = 0
+		#	for row, col in self.quadrant_pellets[quadrant]:
+		#		if self.pelletAtSafe(row, col):
+		#			good += 1
+		#		else:
+		#			bad += 1
+		#	print(f'Quadrant {quadrant}, good: {good}, bad: {bad}')
 
 		# Keep proceeding until a break point is hit
 		while len(priorityQueue):
@@ -574,7 +649,6 @@ class AStarPolicy:
 
 
 				self.expectedLoc = origLoc
-				return
 
 				# get current direction (we will use this to negatively weight changing directions)
 				currDir = self.state.pacmanLoc.getDirection()
@@ -584,6 +658,8 @@ class AStarPolicy:
 				if currNode.targetCaught:
 					print('target caught')
 					pelletTarget = self.getNearestPellet()
+					#pelletTarget = self.getNextPellet(self.state.pacmanLoc)
+					print(f'>CURRENT TARGET: {pelletTarget}')
 
 				print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
 				return victimColor, pelletTarget
@@ -598,6 +674,8 @@ class AStarPolicy:
 
 				print('target caught')
 				pelletTarget = self.getNearestPellet()
+				#pelletTarget = self.getNextPellet(self.state.pacmanLoc)
+				print(f'>CURRENT TARGET: {pelletTarget}')
 
 				print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
 				return GhostColors.NONE, pelletTarget
