@@ -41,6 +41,7 @@ class GhostColors(IntEnum):
 	PINK   = 1
 	CYAN   = 2
 	ORANGE = 3
+	NONE   = 4
 
 # Scatter targets for each of the ghosts
 #               R   P   C   O
@@ -91,7 +92,10 @@ class Location:
 		self.col: int     = 32
 
 	def __str__(self):
-		return str(self.col) + "," + str(self.row)
+		return f'({self.row},{self.col})'
+
+	def hash(self) -> int:
+		return self.row * 32 + self.col
 
 	def update(self, loc_uint16: int) -> None:
 		'''
@@ -151,7 +155,7 @@ class Location:
 		'''
 
 		# If the current position is out of bounds, ignore it
-		if (self.row > 31) or (self.col > 28):
+		if (self.row >= 31) or (self.col >= 28) or (self.row < 0) or (self.col < 0):
 			return False
 
 		# Calculate the next row and column
@@ -183,7 +187,7 @@ class Location:
 
 		# Return the matching direction, if applicable
 		for direction in Directions:
-			if self.row == D_ROW[direction] and self.col == D_COL[direction]:
+			if self.rowDir == D_ROW[direction] and self.colDir == D_COL[direction]:
 				return direction
 
 		# Return none if no direction matches
@@ -563,7 +567,7 @@ class GameState:
 		# General game info
 		self.currTicks    = unpacked[0]
 		self.updatePeriod = unpacked[1]
-		self.gameMode     = unpacked[2]
+		self.gameMode     = GameModes(unpacked[2])
 		self.modeSteps    = unpacked[3]
 		self.modeDuration = unpacked[4]
 		self.currScore    = unpacked[5]
@@ -585,6 +589,11 @@ class GameState:
 		# Orange ghost info
 		self.ghosts[GhostColors.ORANGE].location.update(unpacked[14])
 		self.ghosts[GhostColors.ORANGE].updateAux(unpacked[15])
+
+		# Increment fright steps (for a more risky attack against ghosts)
+		# for ghost in self.ghosts:
+		# 	if ghost.isFrightened():
+		# 		ghost.frightSteps += 1
 
 		# Pacman location info
 		self.pacmanLoc.update(unpacked[16])
@@ -639,26 +648,12 @@ class GameState:
 
 		return sum(row_arr.bit_count() for row_arr in self.pelletArr)
 
-	def collectFruit(self, row: int, col: int) -> None:
+	def numSuperPellets(self) -> int:
 		'''
-		Helper function to collect a fruit for simulation purposes
+		Helper function to compute how many super pellets are left in the maze
 		'''
 
-		# Remove the fruit if we have collected it
-		if self.fruitAt(row, col):
-			self.currScore += 100
-			self.fruitSteps = 0
-			self.fruitLoc.row = 32
-			self.fruitLoc.col = 32
-
-		# Decrease the fruit steps to bring it closer to despawning
-		if self.fruitSteps > 0:
-			self.fruitSteps -= 1
-
-		# If the fruit steps counter has expired, despawn it
-		if self.fruitSteps == 0:
-			self.fruitLoc.row = 32
-			self.fruitLoc.col = 32
+		return self.pelletAt(3, 1) + self.pelletAt(3, 26) + self.pelletAt(23, 1) + self.pelletAt(23, 26)
 
 	def collectPellet(self, row: int, col: int) -> None:
 		'''
@@ -686,9 +681,9 @@ class GameState:
 			self.fruitLoc.col = 13
 
 		# When <= 20 pellets are left, keep the game in chase mode
-		if numPellets <= 20:
-			if self.gameMode == GameModes.SCATTER:
-				self.gameMode = GameModes.CHASE
+		# if numPellets <= 20:
+		# 	if self.gameMode == GameModes.SCATTER:
+		# 		self.gameMode = GameModes.CHASE
 
 		# Scare the ghosts, if applicable
 		if superPellet:
@@ -788,10 +783,10 @@ class GameState:
 			if ghost.location.at(pacmanRow, pacmanCol):
 				if not ghost.isFrightened(): # Collision; Pacman loses
 					return False
-				else: # 'Respawn' the ghost
-					ghost.location.row = 32
-					ghost.location.col = 32
-					ghost.spawning = True
+				#else: # 'Respawn' the ghost
+				#	ghost.location.row = 32
+				#	ghost.location.col = 32
+				ghost.spawning = True
 
 		# Otherwise, Pacman is safe
 		return True
@@ -845,14 +840,14 @@ class GameState:
 				# Scatter -> Chase
 				if self.gameMode == GameModes.SCATTER:
 					self.gameMode = GameModes.CHASE
-					self.modeSteps = 180
-					self.modeDuration = 180
+					self.modeSteps = 175
+					self.modeDuration = 175
 
 				# Chase -> Scatter
 				elif self.gameMode == GameModes.CHASE and self.numPellets() > 20:
 					self.gameMode = GameModes.SCATTER
-					self.modeSteps = 60
-					self.modeDuration = 60
+					self.modeSteps = 65
+					self.modeDuration = 65
 
 				# Reverse the planned directions of all ghosts
 				for ghost in self.ghosts:
@@ -863,20 +858,23 @@ class GameState:
 			for ghost in self.ghosts:
 				ghost.guessPlan()
 
-		# If Pacman is not given a direction to move towards, return false
+		# If Pacman is not given a direction to move towards, skip motion
 		if pacmanDir == Directions.NONE:
-			return False
+			pass
 
-		# Set the direction of Pacman, as chosen, and try to move one step
-		self.pacmanLoc.setDirection(pacmanDir)
-		if not self.pacmanLoc.advance():
-			return False
-		self.collectFruit(self.pacmanLoc.row, self.pacmanLoc.col)
-		self.collectPellet(self.pacmanLoc.row, self.pacmanLoc.col)
+		else:
+			# Set the direction of Pacman, as chosen, and try to move one step
+			pacmanPrevDir = self.pacmanLoc.getDirection()
+			self.pacmanLoc.setDirection(pacmanDir)
+			if not self.pacmanLoc.advance():
+				self.pacmanLoc.setDirection(pacmanPrevDir)
+				return False
 
-		# If there are no pellets left, return
-		if self.numPellets() == 0:
-			return True
+			self.collectPellet(self.pacmanLoc.row, self.pacmanLoc.col)
+
+			# If there are no pellets left, return
+			if self.numPellets() == 0:
+				return True
 
 		# Return if Pacman collides with a non-frightened ghost
 		if not self.safetyCheck():

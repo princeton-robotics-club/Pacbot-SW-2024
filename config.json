@@ -8,6 +8,10 @@
     "localhost"
   ],
 
+<<<<<<< HEAD
   "GameFPS": 80,
+=======
+  "GameFPS": 24,
+>>>>>>> origin/astar-template
   "NumActiveGhosts": 4
 }

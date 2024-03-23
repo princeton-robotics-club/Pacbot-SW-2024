@@ -1,9 +1,5 @@
 # Heap Queues
 from heapq import heappush, heappop
-import math
-import time
-
-from .unionfind import UnionFind
 
 # Game state
 from gameState import *
@@ -12,6 +8,8 @@ from gameState import *
 import policies.astar.genPachattanDistDict as pacdist
 import policies.astar.example as ex
 
+# Big Distance
+INF = 999999
 # Quadrant pellet set
 from valid_pellet_locations import QUAD_PELLET_LOCS
 
@@ -31,16 +29,6 @@ Start-------Current-------Target
 S--------------C---------------T
 |-----gcost----|-----hcost-----|
 |------------fcost-------------|
-
-Test D3:
-4720
-1330
-3640
-
-'''
-
-'''
-Distance metrics
 '''
 
 class DistTypes(IntEnum):
@@ -97,9 +85,6 @@ def newLocation(row: int, col: int):
 	result.col = col
 	return result
 
-GHOST_SPAWN_LOCATION = newLocation(11, 13) # in between two squares so really 13.5
-
-
 # Manhattan distance
 def distL1(loc1: Location, loc2: Location) -> int:
 	return abs(loc1.row - loc2.row) + abs(loc1.col - loc2.col)
@@ -144,6 +129,8 @@ class AStarNode:
 		directionBuf: list[Directions],
 		delayBuf: list[int],
 		bufLength: int,
+		victimCaught: bool = False,
+		targetCaught: bool = False
 	) -> None:
 
 		# Compressed game state
@@ -153,18 +140,26 @@ class AStarNode:
 		self.fCost = fCost
 		self.gCost = gCost
 
+		# Estimated velocity
+		self.estSpeed = 0
+		self.direction = Directions.NONE
+
 		# Message buffer
 		self.directionBuf = directionBuf
 		self.delayBuf = delayBuf
 		self.bufLength = bufLength
+
+		# Victim color (catching scared ghosts)
+		self.victimCaught: bool = victimCaught
+
+		# Determines whether the target was caught
+		self.targetCaught: bool = targetCaught
 
 	def __lt__(self, other) -> bool: # type: ignore
 		return self.fCost < other.fCost # type: ignore
 
 	def __repr__(self) -> str:
 		return str(f'g = {self.gCost} ~ f = {self.fCost}')
-
-
 
 class AStarPolicy:
 	'''
@@ -214,6 +209,14 @@ class AStarPolicy:
 
 
 
+		# > USED FOR TARGETING, FOR ENSURING COMPUTATION ISNT DONT EVERY act()
+		self.count = 0
+		self.cleaned_quadrants = []
+
+		self.current_quadrant = []
+
+
+
 	def getNearestPellet(self) -> Location:
 
 		# Check bounds
@@ -223,14 +226,14 @@ class AStarPolicy:
 
 		#  BFS traverse
 		queue = [first]
-		visited = set(str(first))
+		visited = {first.hash()}
 		while queue:
 
 			# pop from queue
 			currLoc = queue.pop(0)
 
 			# Base Case: Found a pellet
-			if self.state.pelletAt(currLoc.row, currLoc.col):
+			if self.state.pelletAt(currLoc.row, currLoc.col) and not self.state.superPelletAt(currLoc.row, currLoc.col):
 				return currLoc
 
 			# Loop over the directions
@@ -245,27 +248,54 @@ class AStarPolicy:
 				nextLoc.col = currLoc.col
 				nextLoc.row = currLoc.row
 				nextLoc.setDirection(direction)
-				valid = nextLoc.advance()
+				valid = nextLoc.advance() and not self.state.superPelletAt(nextLoc.row, nextLoc.col)
 
 				# avoid same node twice and check this is a valid move
-				if str(nextLoc) not in visited and valid:
+				if nextLoc.hash() not in visited and valid:
 					queue.append(nextLoc)
-					visited.add(str(nextLoc))
+					visited.add(nextLoc.hash())
+
+		print('No nearest...')
 		return first
 
 	def pelletAtSafe(self, row, col):
 		if self.state.wallAt(row, col):
+
+	def scaryVictim(self, victimColor: GhostColors) -> bool:
+
+		V = self.state.ghosts[victimColor]
+
+		if (victimColor == GhostColors.NONE) or self.state.wallAt(V.location.row, V.location.col):
 			return False
-		return self.state.pelletAt(row, col)
 
-	def pelletTarget(self) -> Location:
-		# calc vectors from every pellet in quad to pacman
-		# target median pellet
-		return Location(self.state)
+		if (V.spawning):
+			return True
 
+		for color in GhostColors:
+			G = self.state.ghosts[color]
+			if (color != victimColor) and (not G.spawning) and (not G.isFrightened()):
+				if not self.state.wallAt(G.location.row, G.location.col):
+					if self.dist(V.location, G.location) <= 2:
+						print('re-assigning victim')
+						return True
 
-	def hCost(self, realPacLoc, pelletExists=False) -> int:
+		return False
 
+	def getNearestVictim(self) -> GhostColors:
+
+		closest, closestDist = GhostColors.NONE, INF
+		for color in GhostColors:
+			if self.state.ghosts[color].isFrightened() and not self.state.ghosts[color].spawning:
+				dist = self.dist(self.state.pacmanLoc, self.state.ghosts[color].location)
+				if dist < closestDist and not self.scaryVictim(color):
+					closest = color
+					closestDist = dist
+
+		# Return the closest scared ghost
+		return closest
+
+	def hCost(self) -> int:
+		# make sure pacman in bounds (TODO: Why do we have to do this?)
 		if 0 > self.state.pacmanLoc.row or 32 <= self.state.pacmanLoc.row or 0 > self.state.pacmanLoc.col or 28 <= self.state.pacmanLoc.col:
 			return 999999999
 
@@ -276,7 +306,6 @@ class AStarPolicy:
 		hCostGhost = 0
 
 		# Catching frightened ghosts
-		# hCostScaredGhost = 999999999
 		hCostScaredGhost = 0
 
 		# Chasing fruit
@@ -299,43 +328,13 @@ class AStarPolicy:
 						), 1)
 					)
 				else:
-					# hCostScaredGhost = min(
-					# 	# 0.25*math.pow(self.dist(self.state.pacmanLoc, ghost.location), 1.1),
-					# 	# 5*self.dist(self.state.pacmanLoc, ghost.location),
-					# 	# 10*math.log(self.dist(self.state.pacmanLoc, ghost.location)),
-					# 	self.dist(self.state.pacmanLoc, ghost.location),
-					# 	hCostScaredGhost
-					# )
 					hCostScaredGhost += self.dist(self.state.pacmanLoc, ghost.location)
-					# row = realPacLoc.row - ghost.location.row
-					# if row != 0: row /= abs(row)
-					# col = realPacLoc.col - ghost.location.col
-					# if col != 0: col /= abs(col)
-					# offsetLoc = newLocation(int(ghost.location.row + row), int(ghost.location.col + col))
-					# if not self.state.wallAt(offsetLoc.row, offsetLoc.col):
-					# 	hCostScaredGhost += self.dist(self.state.pacmanLoc, offsetLoc)
-					# else:
-					# 	hCostScaredGhost += self.dist(self.state.pacmanLoc, ghost.location)
-			# else:
-			# 	# Check if ghost spawning
-			# 	hCostGhostSpawn = int(2 / max(self.distSq(self.state.pacmanLoc, GHOST_SPAWN_LOCATION), 1))
 
-		# Check whether fruit exists, and add a target to it if so
+		# Check whether fruit exists, and then add it to target
 		if self.state.fruitSteps > 0:
-			# hCostFruit = math.pow(self.dist(self.state.pacmanLoc, self.state.fruitLoc), 1.1)
-			# hCostFruit = 5*self.dist(self.state.pacmanLoc, self.state.fruitLoc)
-			# hCostFruit = 10 * math.log(self.dist(self.state.pacmanLoc, self.state.fruitLoc))
 			hCostFruit = self.dist(self.state.pacmanLoc, self.state.fruitLoc)
 
-		# Check if pellet at current node
-		self.state.pelletAt(row=self.state.pacmanLoc.row, col=self.state.pacmanLoc.col)
-
-		# Compute hCostPellet
-		if pelletExists:
-			hCostPellet = 0 # TODO: do something more sophisticated than adding a constant
-
 		# If there are frightened ghosts, chase them
-		# if hCostScaredGhost < 999999999:
 		if hCostScaredGhost > 0:
 			# return int(hCostTarget + min(hCostScaredGhost, hCostFruit) + hCostGhost + hCostGhostSpawn)
 			return int(hCostTarget + hCostGhost + hCostScaredGhost + hCostFruit + hCostPellet + hCostGhostSpawn)
@@ -344,12 +343,108 @@ class AStarPolicy:
 		# if hCostFruit != 0:
 		# 	return int(hCostTarget + hCostFruit + hCostGhost + hCostGhostSpawn)
 
+			return int(hCostTarget + hCostGhost + hCostScaredGhost + hCostFruit)
+
 		# Otherwise, chase the target
 		hCostTarget = self.dist(self.state.pacmanLoc, self.target)
-		return int(hCostTarget + hCostGhost + hCostFruit + hCostPellet + hCostGhostSpawn)
+		return int(hCostTarget + hCostGhost + hCostFruit)
 
+	def hCostExtend(self, gCost: int, bufLen: int, victimColor: GhostColors) -> int:
+		'''
+		Extends the existing g_cost delta to estimate a new h-cost due to
+		distance Pachattan distance and estimated speed
+		'''
 
-	async def act(self, predicted_delay=6) -> None:
+		# make sure pacman in bounds
+		if 0 > self.state.pacmanLoc.row or 32 <= self.state.pacmanLoc.row or 0 > self.state.pacmanLoc.col or 28 <= self.state.pacmanLoc.col:
+			return 999999999
+
+		# Dist to target
+		distTarget: int = self.dist(self.state.pacmanLoc, self.target)
+		if (distTarget == 0):
+			return -10000000
+
+		# Dist to nearest scared ghost
+		distScared: int = INF
+		if victimColor != GhostColors.NONE and not self.state.ghosts[victimColor].spawning:
+			distScared = self.dist(self.state.pacmanLoc, self.state.ghosts[victimColor].location)
+
+		# Dist to fruit
+		distFruit: int = 999999
+		if self.state.fruitSteps > 0:
+			distFruit = self.dist(self.state.pacmanLoc, self.state.fruitLoc)
+
+		# Distance to our chosen target: the minimum
+		dist: int = distScared if (distScared < INF) else (distTarget if (distTarget < distFruit // 20) else distFruit)
+		gCostPerStep: float = 2
+
+		# If the buffer is too small, then the gCostPerStep should be 2 on average
+		if bufLen >= 4:
+			gCostPerStep = gCost / bufLen
+
+		# Return the result: (g-cost) / (buffer length) * (dist to target)
+		return int(gCostPerStep * dist)
+
+	def fCostMultiplier(self) -> float:
+
+		# Constant for the multiplier
+		K: int = 64
+
+		# Multiplier addition term
+		multTerm: int = 0
+
+		# Location of the ghost lair
+		lairLoc: Location = Location(self.state)
+		lairLoc.row = 11
+		lairLoc.col = 13
+
+		# Check if any ghosts are frightened
+		fright = False
+		for ghost in self.state.ghosts:
+			if ghost.isFrightened():
+				fright = True
+
+		# Calculate closest non-frightened ghost
+		for ghost in self.state.ghosts:
+			if not ghost.spawning:
+				if not ghost.isFrightened():
+					multTerm += int(
+						K >> self.dist(self.state.pacmanLoc, ghost.location)
+					)
+			elif not fright and not self.state.wallAt(self.state.pacmanLoc.row, self.state.pacmanLoc.col):
+				multTerm += int(
+					K >> self.dist(self.state.pacmanLoc, lairLoc)
+				)
+
+		# Return the multiplier (1 + constant / distance squared)
+		return 1 + multTerm
+
+	def selectTarget(self, pelletTarget: Location) -> None:
+
+		chase = self.state.gameMode == GameModes.CHASE
+
+		# check if top left pellet exists
+		if self.state.superPelletAt(3, 1) and chase:
+			self.target = newLocation(5, 1)
+
+		# check if top right pellet exists
+		elif self.state.superPelletAt(3, 26) and chase:
+			self.target = newLocation(5, 26)
+
+		# check if bottom left pellet exists
+		elif self.state.superPelletAt(23, 1) and chase:
+			self.target = newLocation(20, 3)
+
+		# check if bottom right pellet exists
+		elif self.state.superPelletAt(23, 26) and chase:
+			self.target = newLocation(20, 24)
+
+		# no super pellets
+		else:
+			# target the nearest pellet
+			self.target = pelletTarget
+
+	async def act(self, predicted_delay: int, victimColor: GhostColors, pelletTarget: Location) -> tuple[GhostColors, Location]:
 
 		# Make a priority queue of A-Star Nodes
 		priorityQueue: list[AStarNode] = []
@@ -357,82 +452,30 @@ class AStarPolicy:
 		# Construct an initial node
 		initialNode = AStarNode(
 			compressGameState(self.state),
-			fCost = self.hCost(self.state.pacmanLoc),
+			fCost = self.hCostExtend(0, 0, victimColor),
 			gCost = 0,
 			directionBuf = [],
 			delayBuf = [],
 			bufLength = 0
 		)
 
-		# counter to avoid calc nearest pellet a bunch of times
-		counter = 1
-
 		# Add the initial node to the priority queue
 		heappush(priorityQueue, initialNode)
 
-		# note: compute when hovering super pellet and not in chase
-
-    	# TODO:
-    	# ~~1. keep track of sizes of sets of connected pellets
-		# 2. make some method to choose a pellet of the largest set
-	    # 3. keep track of when to recompute sets
-
-    	## get quadrant
-		#quadrant = getQuadrant(self.state.pacmanLoc)
-
-    	## get pellet locations of quadrant
-		#pellet_locations = QUAD_PELLET_LOCS[quadrant]
-
-		#valid_locations = [(row, col) for row, col in pellet_locations if self.state.pelleAt(row, col)]
-
-		#u = UnionFind(len(valid_locations))
-
-    	## union connected stuff together, unionfind will keep track of largest set by referencing the set's root index
-		#for row, col in valid_locations:
-		#	for row_offset, col_offset in [(1,0), (-1,0), (0,1), (0,-1)]:
-		#		if (row + row_offset, col + col_offset) in valid_locations:
-		#			u.union_grid(row, col, row + row_offset, col + col_offset)
-
-		#self.target = newLocation(*valid_locations[u._largest_size_id])
-
-		if counter == 1 or \
-       	self.target.row == self.state.pacmanLoc.row and \
-        self.target.col == self.state.pacmanLoc.col:
-			# get quadrant
-			quadrant = getQuadrant(self.state.pacmanLoc)
-
-            # get pellet locations of quadrant
-			pellet_locations = QUAD_PELLET_LOCS[quadrant]
-			valid_locations = [(row, col) for row, col in pellet_locations if self.state.pelletAt(row, col)]
-
-			if (len(valid_locations)) > 0:
-				u = UnionFind(len(valid_locations))
-				# union connected stuff together, unionfind will keep track of largest set by referencing the set's root index
-				for i, (row, col)in enumerate(valid_locations):
-					for row_offset, col_offset in [(1,0), (-1,0), (0,1), (0,-1)]:
-						search = row + row_offset, col + col_offset
-						if search in valid_locations:
-							j = valid_locations.index(search)
-							u.union(i, j)
-				target_row, target_col = valid_locations[u._largest_size_id]
-
-				self.target = newLocation(target_row, target_col)
-			counter = 0
-		else:
-			counter += 1
+		# > OLD TARGETING:
 
 		#if self.state.superPelletAt(3, 26):
 		#	self.target = newLocation(5, 21)
 
-    #    # check if top left pellet exists
+        ## check if top left pellet exists
 		#elif self.state.superPelletAt(3, 1):
 		#	self.target = newLocation(5, 6)
 
-    #    # check if bottom left pellet exists
+        ## check if bottom left pellet exists
 		#elif self.state.superPelletAt(23, 1):
 		#	self.target = newLocation(20, 1)
 
-    #    # check if bottom right pellet exists
+        ## check if bottom right pellet exists
 		#elif self.state.superPelletAt(23, 26):
 		#	self.target = newLocation(20, 26)
 		## no super pellets
@@ -445,6 +488,37 @@ class AStarPolicy:
 		#		counter = 0
 		#	else:
 		#		counter += 1
+
+		# > NEW TARGETING
+		if self.count == 20 or \
+				self.state.pacmanLoc.row == self.target.row and \
+				self.state.pacmanLoc.col == self.target.col:
+			quadrant = getQuadrant(self.state.pacmanLoc)
+
+			# grab pellet locations and filter out empty locations
+			pellets = QUAD_PELLET_LOCS[quadrant].copy()
+			filtered_pellets = filter(lambda loc: self.pelletAtSafe(loc[0], loc[1]), pellets)
+
+			# if quadrant empty, move to next quadrant
+			if len(filtered_pellets) == 0:
+
+				# find next closest quadrant
+				available_quadrants = set(['Q1', 'Q2', 'Q3', 'Q4']).difference(self.cleaned_quadrants)
+
+				# compute location to bring pacbot into best quadrant (quadrant center)
+
+
+
+			# iterate through and find closest pellet of current quadrant
+			for pellet in filtered_pellets:
+				...
+
+
+			self.count = 0
+		else:
+			self.count += 1
+
+
 
 
 		print("-"*15)
@@ -469,6 +543,11 @@ class AStarPolicy:
 
 		realPacLoc = self.state.pacmanLoc
 
+		# Lag for first iteration
+		firstItLag = 0
+
+		# Lag for turns
+		turnLag = 0
 
 		# Keep proceeding until a break point is hit
 		while len(priorityQueue):
@@ -481,10 +560,12 @@ class AStarPolicy:
 
 			# If the g-cost of this node is high enough or we reached the target,
 			# make the moves and return
-			if currNode.bufLength >= 10 or self.hCost(self.state.pacmanLoc) <= 1:
-				for index in range(min(2, currNode.bufLength)):
+
+			if currNode.victimCaught:
+
+				for index in range(currNode.bufLength):
 					self.state.queueAction(
-						currNode.delayBuf[index],
+						currNode.delayBuf[index] - (index == 0),
 						currNode.directionBuf[index]
 					)
 					origLoc.setDirection(currNode.directionBuf[index])
@@ -495,11 +576,55 @@ class AStarPolicy:
 				self.expectedLoc = origLoc
 				return
 
-			# get current direction (we will use this to negatively weight changing directions)
-			currDir = self.state.pacmanLoc.getDirection()
+				# get current direction (we will use this to negatively weight changing directions)
+				currDir = self.state.pacmanLoc.getDirection()
+
+				print('victim caught?')
+
+				if currNode.targetCaught:
+					print('target caught')
+					pelletTarget = self.getNearestPellet()
+
+				print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
+				return victimColor, pelletTarget
+
+			elif currNode.targetCaught and (victimColor == GhostColors.NONE):
+
+				for index in range(currNode.bufLength):
+					self.state.queueAction(
+						currNode.delayBuf[index] - (index == 0),
+						currNode.directionBuf[index]
+					)
+
+				print('target caught')
+				pelletTarget = self.getNearestPellet()
+
+				print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
+				return GhostColors.NONE, pelletTarget
+
+			if currNode.bufLength >= 6:
+
+				for index in range(min(currNode.bufLength, 3)):
+					self.state.queueAction(
+						currNode.delayBuf[index] - (index == 0),
+						currNode.directionBuf[index]
+					)
+
+				print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
+				return victimColor, pelletTarget
+
+			# Get Pacman's current direction
+			prevDir = self.state.pacmanLoc.getDirection()
+
+			# Determines if waiting (none) is allowed as a move
+			waitAllowed = (victimColor == GhostColors.NONE)
 
 			# Loop over the directions
 			for direction in Directions:
+
+				# If direction is none, continue
+				if (direction == Directions.NONE) and (not waitAllowed):
+					continue
 
 				# Reset to the current compressed state
 				decompressGameState(self.state, currNode.compressedState)
@@ -520,19 +645,59 @@ class AStarPolicy:
 				# Check whether the direction is valid
 				valid = self.state.simulateAction(predicted_delay, direction)
 
+				turnPenalty = 0
+				evadePenalty = 0
+				if (prevDir != direction):
+					turnPenalty = 1
+
+					if (victimColor != GhostColors.NONE) and not self.state.ghosts[victimColor].spawning:
+
+						loc: Location = Location(self.state)
+						loc.update(self.state.pacmanLoc.serialize())
+						loc.setDirection(direction)
+						dist1 = self.dist(loc, self.state.ghosts[victimColor].location)
+						loc.advance()
+						dist2 = self.dist(loc, self.state.ghosts[victimColor].location)
+
+						if (dist1 < dist2):
+							evadePenalty = 10
+
+				npBefore = self.state.numPellets()
+				nspBefore = self.state.numSuperPellets()
+				valid = self.state.simulateAction(predicted_delay + firstItLag * firstIt + turnPenalty * turnLag, direction)
+				npAfter = self.state.numPellets()
+				nspAfter = self.state.numSuperPellets()
+				ateNormalPellet = (npBefore > npAfter) and (nspBefore == nspAfter)
+
+				# Determines if the target was caught
+				targetCaught = self.state.wallAt(pelletTarget.row, pelletTarget.col) or (not self.state.pelletAt(pelletTarget.row, pelletTarget.col)) or pelletTarget.at(self.state.pacmanLoc.row, self.state.pacmanLoc.col) or (self.state.fruitLoc.at(self.state.pacmanLoc.row, self.state.pacmanLoc.col))
+
+				# Determines if the scared ghost 'victim' was caught
+				victimCaught = (victimColor != GhostColors.NONE) and ((not self.state.ghosts[victimColor].isFrightened()) or self.state.ghosts[victimColor].spawning)
+
+				# Select a new target
+				self.selectTarget(pelletTarget)
+
+				# Determine if there is a frightened ghost to chase
+				victimExists = (victimColor == GhostColors.NONE)
+
 				# If the state is valid, add it to the priority queue
 				if valid:
-					# calculate the cost of changing direction
-					changeDirCost = 0 if (currDir == self.state.pacmanLoc.getDirection()) else 4
-
 					nextNode = AStarNode(
 						compressGameState(self.state),
-						fCost = currNode.gCost + 1 + changeDirCost + self.hCost(realPacLoc, pelletExists),
-						gCost = currNode.gCost + 1 + changeDirCost,
+						fCost = int((self.hCostExtend(currNode.gCost, currNode.bufLength, victimColor) + currNode.gCost + 1) * self.fCostMultiplier()),
+						gCost = currNode.gCost + 2 + 2 * ((not ateNormalPellet) and (victimExists)) + 2 * (turnPenalty and victimExists) + 5 * evadePenalty,
 						directionBuf = currNode.directionBuf + [direction],
-						delayBuf = currNode.delayBuf + [predicted_delay],
-						bufLength = currNode.bufLength + 1
+						delayBuf = currNode.delayBuf + [predicted_delay + firstItLag * firstIt + turnPenalty * turnLag],
+						bufLength = currNode.bufLength + 1,
+						victimCaught = victimCaught,
+						targetCaught = targetCaught
 					)
 
 					# Add the next node to the priority queue
 					heappush(priorityQueue, nextNode)
+
+			firstIt = False
+
+		print("Trapped...")
+		return victimColor, pelletTarget
