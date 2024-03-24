@@ -21,6 +21,8 @@ def penaltyCost(currLoc: Location, ghosts: List[Ghost]):
             dist_to_ghost = distL3(currLoc, ghost.location)
             if dist_to_ghost <= 3:
                 cost += inv_dist_cost(dist_to_ghost)  # type: ignore
+                
+    #TODO: Add a penalty cost for eating a superpellet without being in chase mode
 
     return cost
 
