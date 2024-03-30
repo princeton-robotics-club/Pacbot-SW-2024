@@ -1,4 +1,4 @@
-# Heap Queues
+ # Heap Queues
 from heapq import heappush, heappop
 
 # Game state
@@ -288,8 +288,11 @@ class AStarPolicy:
 		# get current quadrant of pacman
 		quadrant = getQuadrant(currentLoc)
 
-		# get all pellets in current quadrant
-		pellets = self.quadrant_pellets[quadrant]
+		# ensure we stay in best quadrant
+		if quadrant != self.current_quadrant and len(self.quadrant_pellets[quadrant])!=0:
+			quadrant = self.current_quadrant
+		else:
+			self.current_quadrant = quadrant
 
 		# case: no pellets in current quadrant
 		if len(self.quadrant_pellets[quadrant]) == 0:
@@ -312,11 +315,27 @@ class AStarPolicy:
 
 				quadrant = all_quadrants[0]
 
+			self.current_quadrant = quadrant
+
 			# return closest pellet in quadrant
 			return self.getClosestPelletInQuadrant(currentLoc, self.current_quadrant)
 
 		return self.getClosestPelletInQuadrant(currentLoc, self.current_quadrant)
 
+	def getClosestPelletInQuadrant(self, currentLoc: Location, quadrant: Quadrants) -> Location:
+		if len(self.quadrant_pellets[quadrant]) == 0:
+			return None
+
+		bestPellet = self.quadrant_pellets[quadrant][0]
+		#print(bestPellet)
+		bestDist   = self.dist(newLocation(*bestPellet), currentLoc)
+		for row, col in self.quadrant_pellets[quadrant]:
+			d = self.dist(newLocation(row, col), currentLoc)
+			if d < bestDist:
+				bestDist = d
+				bestPellet = row, col
+
+		return newLocation(*bestPellet)
 
 
 	def scaryVictim(self, victimColor: GhostColors) -> bool:
@@ -518,7 +537,8 @@ class AStarPolicy:
 		# Select a new target, if applicable
 		targetCaught = self.state.wallAt(pelletTarget.row, pelletTarget.col) or not self.state.pelletAt(pelletTarget.row, pelletTarget.col) or self.state.fruitLoc.at(self.state.pacmanLoc.row, self.state.pacmanLoc.col)
 		if targetCaught:
-			pelletTarget = self.getNearestPellet()
+			#pelletTarget = self.getNearestPellet()
+			pelletTarget = self.getNextPellet(self.state.pacmanLoc)
 
 		# Flag for first iteration
 		firstIt = True
@@ -553,7 +573,9 @@ class AStarPolicy:
 
 				if currNode.targetCaught:
 					print('target caught')
-					pelletTarget = self.getNearestPellet()
+					#pelletTarget = self.getNearestPellet()
+					pelletTarget = self.getNextPellet(self.state.pacmanLoc)
+
 
 				print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
 				return victimColor, pelletTarget
@@ -567,7 +589,9 @@ class AStarPolicy:
 					)
 
 				print('target caught')
-				pelletTarget = self.getNearestPellet()
+				#pelletTarget = self.getNearestPellet()
+				pelletTarget = self.getNextPellet(self.state.pacmanLoc)
+
 
 				print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
 				return GhostColors.NONE, pelletTarget
