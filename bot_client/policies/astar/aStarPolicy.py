@@ -454,7 +454,7 @@ class AStarPolicy:
 
 		# Dist to target
 		distTarget: int = self.dist(self.state.pacmanLoc, self.target)
-		if (distTarget == 0):
+		if (self.fCostMultiplier() < 16 and distTarget == 0):
 			return -10000000
 
 		# Dist to nearest scared ghost
@@ -526,11 +526,11 @@ class AStarPolicy:
 
 		# check if bottom left pellet exists
 		elif self.state.superPelletAt(23, 1) and chase:
-			self.target = newLocation(20, 3)
+			self.target = newLocation(22, 1)
 
 		# check if bottom right pellet exists
 		elif self.state.superPelletAt(23, 26) and chase:
-			self.target = newLocation(20, 24)
+			self.target = newLocation(22, 26)
 
 		# no super pellets
 		else:
