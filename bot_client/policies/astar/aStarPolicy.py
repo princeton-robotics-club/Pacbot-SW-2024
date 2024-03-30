@@ -4,6 +4,8 @@ from heapq import heappush, heappop
 # Game state
 from gameState import *
 
+from policies.astar.valid_pellet_locations import QUAD_PELLET_LOCS
+
 # Location mapping
 import policies.astar.genPachattanDistDict as pacdist
 import policies.astar.example as ex
@@ -36,6 +38,49 @@ class DistTypes(IntEnum):
 	MANHATTAN_DISTANCE = 0
 	EUCLIDEAN_DISTANCE = 1
 	PACHATTAN_DISTANCE = 2
+
+class Quadrants(IntEnum):
+	'''
+	Enum of quadrants
+	'''
+	Q1 = 0
+	Q2 = 1
+	Q3 = 2
+	Q4 = 3
+
+QUAD_WIDTH  = 14
+QUAD_HEIGHT = 15
+
+def getQuadrant(loc: Location) -> Quadrants:
+	row = loc.row
+	col = loc.col
+	if row <= QUAD_HEIGHT and col <= QUAD_WIDTH:
+		return Quadrants.Q1
+
+  # quadrant 2 (topright)
+	if row <= QUAD_HEIGHT and col > QUAD_WIDTH:
+		return Quadrants.Q2
+
+  # quadrant 3 (bottomleft)
+	if row > QUAD_HEIGHT and col <= QUAD_WIDTH:
+		return Quadrants.Q3
+
+  # quadrant 4 (bottom right)
+	if row > QUAD_HEIGHT and col > QUAD_WIDTH:
+		return Quadrants.Q4
+
+def getNeighborQuadrants(quadrant: Quadrants) -> list[Quadrants]:
+	if quadrant == Quadrants.Q1:
+		return [Quadrants.Q2, Quadrants.Q3]
+
+	if quadrant == Quadrants.Q2:
+		return [Quadrants.Q1, Quadrants.Q4]
+
+	if quadrant == Quadrants.Q3:
+		return [Quadrants.Q1, Quadrants.Q4]
+
+	if quadrant == Quadrants.Q4:
+		return [Quadrants.Q2, Quadrants.Q3]
 
 # Create new location with row, col
 def newLocation(row: int, col: int):
@@ -122,7 +167,7 @@ class AStarNode:
 
 	def __repr__(self) -> str:
 		return str(f'g = {self.gCost} ~ f = {self.fCost}')
-	
+
 
 class AStarPolicy:
 	'''
@@ -166,6 +211,21 @@ class AStarPolicy:
 				self.dist = distL3
 				self.distSq = distSqL3
 
+		# > USED FOR TARGETING, FOR ENSURING COMPUTATION ISNT DONT EVERY act()
+		#self.count : int = 0
+		self.cleaned_quadrants : list = []
+
+		# need to use this instance variable to ensure consistently clear out the targeted quadrant
+		self.current_quadrant : Quadrants = getQuadrant(self.state.pacmanLoc)
+
+		# store count of each quadrant to prioritize quadrant with least pellets first
+		self.quadrant_pellets : dict[Quadrants, list[tuple[int]]] = {
+			Quadrants.Q1:QUAD_PELLET_LOCS[int(Quadrants.Q1)],
+			Quadrants.Q2:QUAD_PELLET_LOCS[int(Quadrants.Q2)],
+			Quadrants.Q3:QUAD_PELLET_LOCS[int(Quadrants.Q3)],
+			Quadrants.Q4:QUAD_PELLET_LOCS[int(Quadrants.Q4)]
+		}
+
 	def getNearestPellet(self) -> Location:
 
 		# Check bounds
@@ -206,18 +266,69 @@ class AStarPolicy:
 
 		print('No nearest...')
 		return first
-	
-	
+
+	# filters out dead pellets
+	def recomputePelletCounts(self) -> None:
+		for quadrant in Quadrants:
+			remaining = []
+			for row, col in self.quadrant_pellets[quadrant]:
+				if self.state.pelletAt(row, col):
+					remaining.append((row, col))
+
+			self.quadrant_pellets[quadrant] = remaining
+
+			if len(remaining) == 0:
+				self.cleaned_quadrants.append(quadrant)
+
+
+	# computes nearest pellet in targeted quadrant
+	def getNextPellet(self, currentLoc: Location) -> Location:
+		self.recomputePelletCounts()
+
+		# get current quadrant of pacman
+		quadrant = getQuadrant(currentLoc)
+
+		# get all pellets in current quadrant
+		pellets = self.quadrant_pellets[quadrant]
+
+		# case: no pellets in current quadrant
+		if len(self.quadrant_pellets[quadrant]) == 0:
+
+			# move to neighboring quadrant (want to avoid diagonal quadrant movement)
+			n1, n2 = getNeighborQuadrants(quadrant)
+
+			# choose quadrant with less pellets
+			if len(self.quadrant_pellets[n1]) > 0 and len(self.quadrant_pellets[n1]) < len(self.quadrant_pellets[n2]):
+				quadrant = n1
+			elif len(self.quadrant_pellets[n2]) > 0:
+				quadrant = n2
+
+			# must mean pellets are are in diagonal quadrant
+			else:
+				all_quadrants = [int(q) for q in Quadrants]
+				all_quadrants.remove(quadrant)
+				all_quadrants.remove(n1)
+				all_quadrants.remove(n2)
+
+				quadrant = all_quadrants[0]
+
+			# return closest pellet in quadrant
+			return self.getClosestPelletInQuadrant(currentLoc, self.current_quadrant)
+
+		return self.getClosestPelletInQuadrant(currentLoc, self.current_quadrant)
+
+
+
 	def scaryVictim(self, victimColor: GhostColors) -> bool:
-		
+
 		V = self.state.ghosts[victimColor]
 
 		if (victimColor == GhostColors.NONE) or self.state.wallAt(V.location.row, V.location.col):
 			return False
-		
+
 		if (V.spawning):
 			return True
-		
+
 		for color in GhostColors:
 			G = self.state.ghosts[color]
 			if (color != victimColor) and (not G.spawning) and (not G.isFrightened()):
@@ -225,11 +336,11 @@ class AStarPolicy:
 					if self.dist(V.location, G.location) <= 2:
 						print('re-assigning victim')
 						return True
-					
+
 		return False
-	
+
 	def getNearestVictim(self) -> GhostColors:
-		
+
 		closest, closestDist = GhostColors.NONE, INF
 		for color in GhostColors:
 			if self.state.ghosts[color].isFrightened() and not self.state.ghosts[color].spawning:
@@ -437,9 +548,9 @@ class AStarPolicy:
 						currNode.delayBuf[index] - (index == 0),
 						currNode.directionBuf[index]
 					)
-				
+
 				print('victim caught?')
-					
+
 				if currNode.targetCaught:
 					print('target caught')
 					pelletTarget = self.getNearestPellet()
@@ -454,7 +565,7 @@ class AStarPolicy:
 						currNode.delayBuf[index] - (index == 0),
 						currNode.directionBuf[index]
 					)
-			
+
 				print('target caught')
 				pelletTarget = self.getNearestPellet()
 
@@ -462,7 +573,7 @@ class AStarPolicy:
 				return GhostColors.NONE, pelletTarget
 
 			if currNode.bufLength >= 6:
-				
+
 				for index in range(min(currNode.bufLength, 3)):
 					self.state.queueAction(
 						currNode.delayBuf[index] - (index == 0),
@@ -494,14 +605,14 @@ class AStarPolicy:
 					turnPenalty = 1
 
 					if (victimColor != GhostColors.NONE) and not self.state.ghosts[victimColor].spawning:
-						
+
 						loc: Location = Location(self.state)
 						loc.update(self.state.pacmanLoc.serialize())
 						loc.setDirection(direction)
 						dist1 = self.dist(loc, self.state.ghosts[victimColor].location)
 						loc.advance()
 						dist2 = self.dist(loc, self.state.ghosts[victimColor].location)
-						
+
 						if (dist1 < dist2):
 							evadePenalty = 10
 
@@ -517,7 +628,7 @@ class AStarPolicy:
 
 				# Determines if the scared ghost 'victim' was caught
 				victimCaught = (victimColor != GhostColors.NONE) and ((not self.state.ghosts[victimColor].isFrightened()) or self.state.ghosts[victimColor].spawning)
-				
+
 				# Select a new target
 				self.selectTarget(pelletTarget)
 
