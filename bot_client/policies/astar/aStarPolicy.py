@@ -657,8 +657,8 @@ class AStarPolicy:
 
 				if currNode.targetCaught:
 					print('target caught')
-					pelletTarget = self.getNearestPellet()
-					#pelletTarget = self.getNextPellet(self.state.pacmanLoc)
+					#pelletTarget = self.getNearestPellet()
+					pelletTarget = self.getNextPellet(self.state.pacmanLoc)
 					print(f'>CURRENT TARGET: {pelletTarget}')
 
 				print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
@@ -673,8 +673,8 @@ class AStarPolicy:
 					)
 
 				print('target caught')
-				pelletTarget = self.getNearestPellet()
-				#pelletTarget = self.getNextPellet(self.state.pacmanLoc)
+				#pelletTarget = self.getNearestPellet()
+				pelletTarget = self.getNextPellet(self.state.pacmanLoc)
 				print(f'>CURRENT TARGET: {pelletTarget}')
 
 				print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
