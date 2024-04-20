@@ -38,11 +38,11 @@ class DistTypes(IntEnum):
 	PACHATTAN_DISTANCE = 2
 
 # Create new location with row, col
-def newLocation(row: int, col: int):
+def newLocation(row: int, col: int, state: GameState):
 	'''
 	Construct a new location state
 	'''
-	result = Location(0)
+	result = Location(state)
 	result.row = row
 	result.col = col
 	return result
@@ -91,6 +91,7 @@ class AStarNode:
 		directionBuf: list[Directions],
 		delayBuf: list[int],
 		bufLength: int,
+		matchIdx: int,
 		victimCaught: bool = False,
 		targetCaught: bool = False
 	) -> None:
@@ -105,6 +106,9 @@ class AStarNode:
 		# Estimated velocity
 		self.estSpeed = 0
 		self.direction = Directions.NONE
+
+		# Match index
+		self.matchIdx = matchIdx
 
 		# Message buffer
 		self.directionBuf = directionBuf
@@ -143,7 +147,7 @@ class AStarPolicy:
 		self.target: Location = target
 
 		# Expected location
-		self.expectedLoc: Location = newLocation(23, 13)
+		self.expectedLoc: Location = newLocation(23, 13, self.state)
 		self.error_sum = 0
 		self.error_count = 0
 		self.dropped_command_count = 0
@@ -235,48 +239,6 @@ class AStarPolicy:
 		# Return the closest scared ghost
 		return closest
 
-	def hCost(self) -> int:
-		# make sure pacman in bounds (TODO: Why do we have to do this?)
-		if 0 > self.state.pacmanLoc.row or 32 <= self.state.pacmanLoc.row or 0 > self.state.pacmanLoc.col or 28 <= self.state.pacmanLoc.col:
-			return 999999999
-
-		# Heuristic cost for this location
-		hCostTarget = 0
-
-		# Heuristic cost to estimate ghost locations
-		hCostGhost = 0
-
-		# Catching frightened ghosts
-		hCostScaredGhost = 0
-
-		# Chasing fruit
-		hCostFruit = 0
-
-		# Add a penalty for being close to the ghosts
-		for ghost in self.state.ghosts:
-			if not ghost.spawning:
-				if not ghost.isFrightened():
-					hCostGhost += int(
-						64 / max(self.distSq(
-							self.state.pacmanLoc,
-							ghost.location
-						), 1)
-					)
-				else:
-					hCostScaredGhost += self.dist(self.state.pacmanLoc, ghost.location)
-
-		# Check whether fruit exists, and then add it to target
-		if self.state.fruitSteps > 0:
-			hCostFruit = self.dist(self.state.pacmanLoc, self.state.fruitLoc)
-
-		# If there are frightened ghosts, chase them
-		if hCostScaredGhost > 0:
-			return int(hCostTarget + hCostGhost + hCostScaredGhost + hCostFruit)
-
-		# Otherwise, chase the target
-		hCostTarget = self.dist(self.state.pacmanLoc, self.target)
-		return int(hCostTarget + hCostGhost + hCostFruit)
-
 	def hCostExtend(self, gCost: int, bufLen: int, victimColor: GhostColors) -> int:
 		'''
 		Extends the existing g_cost delta to estimate a new h-cost due to
@@ -316,7 +278,7 @@ class AStarPolicy:
 	def fCostMultiplier(self) -> float:
 
 		# Constant for the multiplier
-		K: int = 64
+		K: int = 128
 
 		# Multiplier addition term
 		multTerm: int = 0
@@ -353,26 +315,26 @@ class AStarPolicy:
 
 		# check if top left pellet exists
 		if self.state.superPelletAt(3, 1) and chase:
-			self.target = newLocation(5, 1)
+			self.target = newLocation(5, 1, self.state)
 
 		# check if top right pellet exists
 		elif self.state.superPelletAt(3, 26) and chase:
-			self.target = newLocation(5, 26)
+			self.target = newLocation(5, 26, self.state)
 
 		# check if bottom left pellet exists
 		elif self.state.superPelletAt(23, 1) and chase:
-			self.target = newLocation(20, 3)
+			self.target = newLocation(20, 3, self.state)
 
 		# check if bottom right pellet exists
 		elif self.state.superPelletAt(23, 26) and chase:
-			self.target = newLocation(20, 24)
+			self.target = newLocation(20, 24, self.state)
 
 		# no super pellets
 		else:
 			# target the nearest pellet
 			self.target = pelletTarget
 
-	async def act(self, predicted_delay: int, victimColor: GhostColors, pelletTarget: Location) -> tuple[GhostColors, Location]:
+	async def act(self, predicted_delay: int, victimColor: GhostColors, pelletTarget: Location, lastRow: int, lastCol: int) -> tuple[GhostColors, Location, int, int]:
 
 		# Make a priority queue of A-Star Nodes
 		priorityQueue: list[AStarNode] = []
@@ -384,6 +346,7 @@ class AStarPolicy:
 			gCost = 0,
 			directionBuf = [],
 			delayBuf = [],
+			matchIdx = -1,
 			bufLength = 0
 		)
 
@@ -421,16 +384,34 @@ class AStarPolicy:
 			# Reset to the current compressed state
 			decompressGameState(self.state, currNode.compressedState)
 
+			# If there is a match between the last goal position and this position, note it
+			if self.state.pacmanLoc.row == lastRow and self.state.pacmanLoc.col == lastCol:
+				currNode.matchIdx = currNode.bufLength
+
 			# If the g-cost of this node is high enough or we reached the target,
 			# make the moves and return
 
 			if currNode.victimCaught:
 
-				for index in range(currNode.bufLength):
+				if (not self.state.flushEnabled):
+					currNode.matchIdx = 0
+
+				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= 3):
+					self.state.flushActions()
+					currNode.matchIdx = 0
+					print("FLUSH ----------------------------------")
+				elif (not len(self.state.writeServerBuf)):
+					currNode.matchIdx = 0
+
+				print(currNode.directionBuf)
+
+				for index in range(currNode.matchIdx, currNode.bufLength):
 					self.state.queueAction(
 						currNode.delayBuf[index] - (index == 0),
 						currNode.directionBuf[index]
 					)
+
+					print(index, currNode.directionBuf[index], end=', ')
 				
 				#print('victim caught?')
 					
@@ -438,33 +419,75 @@ class AStarPolicy:
 					#print('target caught')
 					pelletTarget = self.getNearestPellet()
 
+				row, col = self.state.pacmanLoc.row, self.state.pacmanLoc.col
+				print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
+
 				#print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
-				return victimColor, pelletTarget
+				return victimColor, pelletTarget, row, col
 
 			elif currNode.targetCaught and (victimColor == GhostColors.NONE):
 
-				for index in range(currNode.bufLength):
+				if (not self.state.flushEnabled):
+					currNode.matchIdx = 0
+
+				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= 3):
+					self.state.flushActions()
+					currNode.matchIdx = 0
+					print("FLUSH ----------------------------------")
+				elif (not len(self.state.writeServerBuf)):
+					currNode.matchIdx = 0
+
+				print(currNode.directionBuf)
+
+				for index in range(currNode.matchIdx, currNode.bufLength):
 					self.state.queueAction(
 						currNode.delayBuf[index] - (index == 0),
 						currNode.directionBuf[index]
 					)
+
+					print(index, currNode.directionBuf[index], end=', ')
 			
 				#print('target caught')
 				pelletTarget = self.getNearestPellet()
 
+				row, col = self.state.pacmanLoc.row, self.state.pacmanLoc.col
+				print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
+
 				#print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
-				return GhostColors.NONE, pelletTarget
+				return GhostColors.NONE, pelletTarget, row, col
 
 			if currNode.bufLength >= 6:
-				
-				for index in range(min(currNode.bufLength, 3)):
+
+				if (not self.state.flushEnabled):
+					currNode.matchIdx = 0
+
+				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= 3):
+					self.state.flushActions()
+					currNode.matchIdx = 0
+					print("FLUSH ----------------------------------")
+				elif (not len(self.state.writeServerBuf)):
+					currNode.matchIdx = 0
+
+				print(currNode.directionBuf)
+
+				testLocation = newLocation(lastRow, lastCol, self.state)
+
+				for index in range(currNode.matchIdx, min(currNode.bufLength, currNode.matchIdx + 3)):
 					self.state.queueAction(
 						currNode.delayBuf[index] - (index == 0),
 						currNode.directionBuf[index]
 					)
 
+					testLocation.setDirection(currNode.directionBuf[index])
+					testLocation.advance()
+
+					print(index, currNode.directionBuf[index], end=', ')
+
+				row, col = testLocation.row, testLocation.col
+				print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
+
 				#print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
-				return victimColor, pelletTarget
+				return victimColor, pelletTarget, row, col
 
 			# Get Pacman's current direction
 			prevDir = self.state.pacmanLoc.getDirection()
@@ -528,7 +551,8 @@ class AStarPolicy:
 						delayBuf = currNode.delayBuf + [predicted_delay + firstItLag * firstIt + turnPenalty * turnLag],
 						bufLength = currNode.bufLength + 1,
 						victimCaught = victimCaught,
-						targetCaught = targetCaught
+						targetCaught = targetCaught,
+						matchIdx = currNode.matchIdx
 					)
 
 					# Add the next node to the priority queue
@@ -536,5 +560,5 @@ class AStarPolicy:
 
 			firstIt = False
 
-		#print("Trapped...")
-		return victimColor, pelletTarget
+		print("Trapped...")
+		return victimColor, pelletTarget, lastRow, lastCol

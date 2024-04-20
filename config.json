@@ -9,8 +9,9 @@
   ],
 
   "GameFPS": 24,
-  "NumActiveGhosts": 0,
-  "PythonSimulation": false,
+  "NumActiveGhosts": 4,
+  "PythonSimulation": true,
+  "FlushEnabled": false,
 
   "RobotIP": "10.9.112.160",
   "RobotPort": 8081

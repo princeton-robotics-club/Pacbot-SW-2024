@@ -1,7 +1,7 @@
+# type: ignore
 
 import bitstruct.c as bitstruct
 from gameState import Directions, Location, GameState
-
 
 class Node:
     def __init__(self, loc: Location, dist: int):

@@ -16,6 +16,9 @@ from terminalColors import *
 # Server messages
 from serverMessage import ServerMessage
 
+# Random number generator
+from random import random
+
 class GameModes(IntEnum):
 	'''
 	Enum of possible game modes
@@ -399,6 +402,12 @@ class GameState:
 
 		# Buffer of messages to write back to the server
 		self.writeServerBuf: deque[ServerMessage] = deque[ServerMessage](maxlen=64)
+
+		# Flag to keep track of whether flushing server messages is allowed
+		self.flushEnabled: bool = True
+
+		# Flag to keep track of whether this is a simulation (use probability to estimate stochasticity if so)
+		self.simulationFlag: bool = False
 
 		# Internal representation of walls:
 		# 31 * 4 bytes = 31 * (32-bit integer bitset)
@@ -797,8 +806,24 @@ class GameState:
 		given Pacbot direction and number of ticks until the message is sent.
 		'''
 
+		if (self.simulationFlag):
+			r = random()
+			if (r < 0.001): # "Drop" the message with 1% probablility
+				print('oops')
+				return
+			elif (r < 0.201): # "Move too fast" with 20% probability
+				numTicks -= 1
+			elif (r < 0.401): # "Move too slow" with 20% probability
+				numTicks += 1
+
 		self.writeServerBuf.append(
 			ServerMessage(D_MESSAGES[pacmanDir], numTicks)
+		)
+
+	def flushActions(self) -> None:
+		self.writeServerBuf.clear()
+		self.writeServerBuf.append(
+			ServerMessage(b'f', 0)
 		)
 
 	def simulateAction(self, numTicks: int, pacmanDir: Directions) -> bool:

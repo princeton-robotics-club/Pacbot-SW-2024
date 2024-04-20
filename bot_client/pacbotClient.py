@@ -45,7 +45,7 @@ def getSimulationFlag() -> bool:
 	with open('../config.json', 'r', encoding='UTF-8') as configFile:
 		config = json.load(configFile)
 
-	# Return the websocket connect address
+	# Return the simulation flag
 	return config["PythonSimulation"]
 
 # Get the robot address from the config.json file
@@ -55,8 +55,18 @@ def getRobotAddress() -> tuple[str, int]:
 	with open('../config.json', 'r', encoding='UTF-8') as configFile:
 		config = json.load(configFile)
 
-	# Return the websocket connect address
+	# Return the robot socket connect address
 	return config["RobotIP"], config['RobotPort']
+
+# Get the robot address from the config.json file
+def getFlushEnabled() -> bool:
+
+	# Read the configuration file
+	with open('../config.json', 'r', encoding='UTF-8') as configFile:
+		config = json.load(configFile)
+
+	# Return whether flushing of the buffer is enabled
+	return config["FlushEnabled"]
 
 class PacbotClient:
 	'''
@@ -64,7 +74,7 @@ class PacbotClient:
 	Pacbot game server, using asyncio.
 	'''
 
-	def __init__(self, connectURL: str, simulationFlag: bool, robotAddress: tuple[str, int]) -> None:
+	def __init__(self, connectURL: str, simulationFlag: bool, robotAddress: tuple[str, int], flushEnabled: bool) -> None:
 		'''
 		Construct a new Pacbot client object
 		'''
@@ -74,6 +84,9 @@ class PacbotClient:
 
 		# Simulation flag (bool)
 		self.simulationFlag: bool = simulationFlag
+
+		# Whether flushing is enabled (bool)
+		self.flushEnabled: bool = flushEnabled
 
 		# Robot IP and port
 		self.robotIP: str = robotAddress[0]
@@ -87,6 +100,8 @@ class PacbotClient:
 
 		# Game state object to store the game information
 		self.state: GameState = GameState()
+		self.state.flushEnabled = flushEnabled
+		self.state.simulationFlag = simulationFlag
 
 		# Decision module (policy) to make high-level decisions
 		self.decisionModule: DecisionModule = DecisionModule(self.state)
@@ -196,7 +211,7 @@ class PacbotClient:
 
 		# Quit if in simulation
 		if (self.simulationFlag):
-			print("Simulation Mode: No Robot")
+			print(f"{CYAN}Simulation Mode: No Robot{NORMAL}")
 			return
 
 		# Keep track if the first iteration has taken place
@@ -240,7 +255,8 @@ async def main():
 	connectURL = getConnectURL()
 	simulationFlag = getSimulationFlag()
 	robotAddress = getRobotAddress()
-	client = PacbotClient(connectURL, simulationFlag, robotAddress)
+	flushEnabled = getFlushEnabled()
+	client = PacbotClient(connectURL, simulationFlag, robotAddress, flushEnabled)
 	await client.run()
 
 	# Once the connection is closed, end the event loop
