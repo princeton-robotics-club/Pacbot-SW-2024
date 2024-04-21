@@ -4,9 +4,12 @@ import socket
 # Enums for command info
 from enum import IntEnum
 
+# Game state for event handlers
+from gameState import GameModes, Location
+
 class CommandType(IntEnum):
-    START=0
-    STOP=1
+    STOP=0
+    START=1
     FLUSH=2
     MOVE=3
 
@@ -26,7 +29,7 @@ dirMap = {
 
 class RobotSocket:
     
-    def __init__(self, robotIP: str, robotPort: int) -> None:
+    def __init__(self, robotIP: str, robotPort: int, pbClient) -> None:
 
         # Robot address
         self.robotIP = robotIP
@@ -38,7 +41,7 @@ class RobotSocket:
         self.sock.setblocking(False)
 
         # Received sequence number and data
-        self.recvSeq: int
+        self.recvSeq: int = -1
         self.recvData: bytes = bytes([0,0,0,0,0,0])
 
         # Data
@@ -49,12 +52,25 @@ class RobotSocket:
         self.val1: int = 0
         self.val2: int = 0
 
-    def moveNoCoal(self, command: bytes) -> None:
+        self.initEventHandlers(pbClient)
+
+
+    def initEventHandlers(self, pbClient):
+        # set up event handlers
+        pbClient.subscribeToGameModeStartStopChange(self.handleGameModeStartStopChange)
+
+    def moveNoCoal(self, command: bytes, row: int, col: int) -> None:
 
         print('sending command', command)
 
         if command == b'.':
             return
+        
+        # if we changed our mind, return
+        if command == b"f":
+            self.flush(row, col)
+            return
+        self.flush(row,col)
 
         # Update the sequence number, if applicable
         self.updateSeq()
@@ -69,7 +85,7 @@ class RobotSocket:
 
     def flush(self, row: int, col: int) -> None:
         
-        print('flush', row, col)
+        print('flush ---------------- ', row, col)
 
         # Update the sequence number, if applicable
         self.updateSeq()
@@ -84,8 +100,13 @@ class RobotSocket:
         # Dispatch the message
         self.dispatch()
 
-    def start(self, row: int, col: int) -> None:
+    def handleGameModeStartStopChange(self, isRunning: bool, pbLoc: Location) -> None:
+        if (isRunning):
+            self.start(pbLoc.row, pbLoc.col)
+        else:
+            self.stop(pbLoc.row, pbLoc.col)
 
+    def start(self, row: int, col: int) -> None:
         print('start', row, col)
 
         # Update the sequence number, if applicable
@@ -164,6 +185,6 @@ class RobotSocket:
 
         message = bytes(message, "ascii")
 
-        print(message)
+        # print("message: " + str(message))
 
         self.sock.sendto(message, (self.robotIP, self.robotPort))

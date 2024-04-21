@@ -10,7 +10,7 @@ from websockets.exceptions import ConnectionClosedError # type: ignore
 from websockets.typing import Data # type: ignore
 
 # Game state
-from gameState import GameState
+from gameState import GameState, GameModes, Location
 
 # Decision module
 from policies.astar.decisionModule import DecisionModule
@@ -27,6 +27,9 @@ signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 # Terminal colors for formatting output text
 from terminalColors import *
+
+# for type enforcement of event handler functions
+from typing import Callable
 
 # Get the connect URL from the config.json file
 def getConnectURL() -> str:
@@ -98,6 +101,9 @@ class PacbotClient:
 		# Connection object to communicate with the server
 		self.connection: ClientConnection
 
+		# event handlers
+		self.gameModeStartStopEventHandlers: list[Callable[[bool, Location], None]] = []
+
 		# Game state object to store the game information
 		self.state: GameState = GameState()
 		self.state.flushEnabled = flushEnabled
@@ -107,7 +113,20 @@ class PacbotClient:
 		self.decisionModule: DecisionModule = DecisionModule(self.state)
 
 		# Robot socket (comms) to dispatch low-level commands
-		self.robotSocket: RobotSocket = RobotSocket(self.robotIP, self.robotPort)
+		self.robotSocket: RobotSocket = RobotSocket(self.robotIP, self.robotPort, self)
+
+
+	def notifyGameModeStartStopChange(self, gameMode: bool):
+		print("notifying game change")
+		for gameModeStartStopEventHandler in self.gameModeStartStopEventHandlers:
+			gameModeStartStopEventHandler(gameMode, self.state.pacmanLoc)
+
+	def subscribeToGameModeStartStopChange(self, handler: Callable[[bool, Location], None]):
+		self.gameModeStartStopEventHandlers.append(handler)
+
+	def unsubscribeToGameModeStartStopChange(self, handler: Callable[[bool, Location], None]):
+		self.gameModeStartStopEventHandlers.remove(handler)
+
 
 	async def run(self) -> None:
 		'''
@@ -187,7 +206,13 @@ class PacbotClient:
 					messageBytes = message.encode('ascii') # type: ignore
 
 				# Update the state, given this message from the server
+				isRunningOld = GameModes.isRunning(self.state.gameMode)
 				self.state.update(messageBytes)
+
+				# trigger gameMode update (stop/start change event)
+				isRunningNew = GameModes.isRunning(self.state.gameMode)
+				if (isRunningOld != isRunningNew):
+					self.notifyGameModeStartStopChange(isRunningNew)
 
 				# Write a response back to the server if necessary
 				if (self.simulationFlag):
@@ -211,8 +236,11 @@ class PacbotClient:
 
 		# Quit if in simulation
 		if (self.simulationFlag):
-			print(f"{CYAN}Simulation Mode: No Robot{NORMAL}")
+			print(f"{CYAN}Mode: No Robot{NORMAL}")
 			return
+		else:
+			print(f"{CYAN}Mode: Yes Robot{NORMAL}")
+
 
 		# Keep track if the first iteration has taken place
 		firstIt = True
@@ -228,14 +256,22 @@ class PacbotClient:
 				
 				# Handle first iteration (flush)
 				if firstIt:
+					# begin by flushing buff
 					self.robotSocket.flush(self.state.pacmanLoc.row, self.state.pacmanLoc.col)
+
+					# send start/stop depending on the gamestate
+					if (GameModes.isRunning(self.state.gameMode)):
+						self.robotSocket.start(self.state.pacmanLoc.row, self.state.pacmanLoc.col)
+					else:
+						self.robotSocket.stop(self.state.pacmanLoc.row, self.state.pacmanLoc.col)
 					firstIt = False
 
 				# Otherwise, send out relevant messages
 				else:
 					if self.state.writeServerBuf and self.state.writeServerBuf[0].tick():
 						command: bytes = self.state.writeServerBuf.popleft().getBytes()
-						self.robotSocket.moveNoCoal(command)
+						self.robotSocket.moveNoCoal(command, self.state.pacmanLoc.row, self.state.pacmanLoc.col)
+						self.state.writeServerBuf.clear() # TODO: remove this
 						if self.state.writeServerBuf:
 							self.state.writeServerBuf[0].skipDelay()
 

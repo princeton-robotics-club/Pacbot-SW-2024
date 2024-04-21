@@ -69,7 +69,7 @@ class DecisionModule:
 				await asyncio.sleep(0.25)
 
 			if len(self.state.writeServerBuf) >= 5:
-				await asyncio.sleep(0.5)
+				await asyncio.sleep(0.25)
 
 			if wait:
 				# print(len(self.state.writeServerBuf))

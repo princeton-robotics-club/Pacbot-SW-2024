@@ -28,6 +28,10 @@ class GameModes(IntEnum):
 	SCATTER = 1
 	CHASE   = 2
 
+	@classmethod
+	def isRunning(cls, gm):
+		return gm != GameModes.PAUSED
+
 # Terminal colors, based on the game mode
 GameModeColors = {
 	GameModes.PAUSED:  DIM,
@@ -464,6 +468,10 @@ class GameState:
 		# 31 * 4 bytes = 31 * (32-bit integer bitset)
 		self.pelletArr: list[int] = [0 for _ in range(31)]
 		self.format += (31 * 'I')
+
+	def getCommandBuff(self) -> list[Command]:
+		
+		return []
 
 	def lock(self) -> None:
 		'''

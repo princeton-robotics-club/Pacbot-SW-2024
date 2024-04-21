@@ -93,7 +93,9 @@ class AStarNode:
 		bufLength: int,
 		matchIdx: int,
 		victimCaught: bool = False,
-		targetCaught: bool = False
+		targetCaught: bool = False,
+		seqno: int = -1,
+		isInitNode: bool = True
 	) -> None:
 
 		# Compressed game state
@@ -120,6 +122,10 @@ class AStarNode:
 
 		# Determines whether the target was caught
 		self.targetCaught: bool = targetCaught
+
+		# Sequence number, different from comms seqno!
+		self.seqno = seqno
+		self.isInitNode = isInitNode
 
 	def __lt__(self, other) -> bool: # type: ignore
 		return self.fCost < other.fCost # type: ignore
@@ -165,6 +171,81 @@ class AStarPolicy:
 				self.dist = distL3
 				self.distSq = distSqL3
 
+		# Sent Buff (buff we sent to the comms module - might or might not have been executed)
+		self.sentQueue = self.SentQueue()
+
+		# # Seqno, for assigning to each new node, different from comms seqno!
+		# self.seqno = 0
+
+	class SentQueue:
+		def __init__(self):
+			self.maxPathSize = 6
+			self.minPathSize = 0
+			self.sentBuff = []
+
+	# 	class Command:
+	# 		def __init__(self, row:int, col:int, dir:Directions):
+	# 			self.row = row
+	# 			self.col = col
+	# 			self.dir = dir
+			
+	# 		def __eq__(self, other):
+	# 			return (self.row == other.row) and (self.col == other.col) and (self.dir == other.dir)
+
+	# 	def enqueue(self, row:int, col:int, dir:Directions):
+	# 		assert(len(self.sentBuff) <= self.maxPathSize)
+	# 		self.sentBuff.append(self.Command(row,col,dir))
+		
+	# 	def dequeue(self):
+	# 		assert(len(self.sentBuff) >= self.minPathSize)
+	# 		return self.sentBuff.pop(0)
+		
+
+	# 	def smartContains(self, commandList: list[Command]):
+	# 		# see if the first one matches up
+	# 		assert(len(commandList))
+	# 		matchIndex = -1
+	# 		for i in range(len(self.sentBuff)):
+	# 			# when match, break
+	# 			if self.sentBuff[i] == commandList[0]:
+	# 				matchIndex = i
+	# 				for j in range(i, len(self.sentBuff)):
+	# 					commandList.pop()
+	# 					break
+
+
+	# 				return
+
+	# 		# if no match then these we should flush (old buff complete and all new commands) or (has diverged)
+	# 		if matchIndex == -1:
+	# 			return True
+			
+	# 		# otherwise, only keep those in the command buffer that have not already been sent
+	# 		for i in range(matchIndex, len(self.sentBuff)):
+	# 			commandList.pop(0)
+	# 			break
+
+	# 		return False
+
+		
+		
+	
+		# def getNextSeqNo(self, x:int, y:int, dir:Directions, prevSeqno):
+		# 	# TODO add nonce
+		# 	assert(0==1)
+		# 	return (x << 16 | y << 8 | int(dir)) ^ prevSeqno
+
+		# ''' Returns the last matching seqno from our history
+		# '''
+		# def getMatchingSeqNumber(self, x:int, y:int, dir:Directions):
+		# 	assert(len(self.sentBuff) > 1) # TODO handle this case
+		# 	for i in range(1, len(self.sentBuff)):
+		# 		if self.sentBuff[i] == self.getNextSeqNo(x, y, dir, self.sentBuff[i-1]):
+		# 			pass
+
+		
+
+	
 	def getNearestPellet(self) -> Location:
 
 		# Check bounds
@@ -347,7 +428,9 @@ class AStarPolicy:
 			directionBuf = [],
 			delayBuf = [],
 			matchIdx = -1,
-			bufLength = 0
+			bufLength = 0,
+			isInitNode=True,
+			seqno=0 # setting to 0 TODO use random number
 		)
 
 		# Add the initial node to the priority queue
@@ -395,15 +478,15 @@ class AStarPolicy:
 
 				if (not self.state.flushEnabled):
 					currNode.matchIdx = 0
-
-				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= 3):
+				
+				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= self.sentQueue.maxPathSize):
 					self.state.flushActions()
 					currNode.matchIdx = 0
-					print("FLUSH ----------------------------------")
+					# print("FLUSH ----------------------------------")
 				elif (not len(self.state.writeServerBuf)):
 					currNode.matchIdx = 0
 
-				print(currNode.directionBuf)
+				# print(currNode.directionsBuf)
 
 				for index in range(currNode.matchIdx, currNode.bufLength):
 					self.state.queueAction(
@@ -411,7 +494,7 @@ class AStarPolicy:
 						currNode.directionBuf[index]
 					)
 
-					print(index, currNode.directionBuf[index], end=', ')
+					# print(index, currNode.directionBuf[index], end=', ')
 				
 				#print('victim caught?')
 					
@@ -420,7 +503,7 @@ class AStarPolicy:
 					pelletTarget = self.getNearestPellet()
 
 				row, col = self.state.pacmanLoc.row, self.state.pacmanLoc.col
-				print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
+				# print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
 
 				#print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
 				return victimColor, pelletTarget, row, col
@@ -430,14 +513,14 @@ class AStarPolicy:
 				if (not self.state.flushEnabled):
 					currNode.matchIdx = 0
 
-				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= 3):
+				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= self.sentQueue.maxPathSize):
 					self.state.flushActions()
 					currNode.matchIdx = 0
-					print("FLUSH ----------------------------------")
+					# print("FLUSH ----------------------------------")
 				elif (not len(self.state.writeServerBuf)):
 					currNode.matchIdx = 0
 
-				print(currNode.directionBuf)
+				# print(currNode.directionBuf)
 
 				for index in range(currNode.matchIdx, currNode.bufLength):
 					self.state.queueAction(
@@ -445,13 +528,13 @@ class AStarPolicy:
 						currNode.directionBuf[index]
 					)
 
-					print(index, currNode.directionBuf[index], end=', ')
+					# print(index, currNode.directionBuf[index], end=', ')
 			
 				#print('target caught')
 				pelletTarget = self.getNearestPellet()
 
 				row, col = self.state.pacmanLoc.row, self.state.pacmanLoc.col
-				print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
+				# print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
 
 				#print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
 				return GhostColors.NONE, pelletTarget, row, col
@@ -461,18 +544,18 @@ class AStarPolicy:
 				if (not self.state.flushEnabled):
 					currNode.matchIdx = 0
 
-				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= 3):
+				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= self.sentQueue.maxPathSize):
 					self.state.flushActions()
 					currNode.matchIdx = 0
-					print("FLUSH ----------------------------------")
+					# print("FLUSH ----------------------------------")
 				elif (not len(self.state.writeServerBuf)):
 					currNode.matchIdx = 0
 
-				print(currNode.directionBuf)
+				# print(currNode.directionBuf)
 
 				testLocation = newLocation(lastRow, lastCol, self.state)
 
-				for index in range(currNode.matchIdx, min(currNode.bufLength, currNode.matchIdx + 3)):
+				for index in range(currNode.matchIdx, min(currNode.bufLength, currNode.matchIdx + self.sentQueue.maxPathSize)):
 					self.state.queueAction(
 						currNode.delayBuf[index] - (index == 0),
 						currNode.directionBuf[index]
@@ -481,16 +564,16 @@ class AStarPolicy:
 					testLocation.setDirection(currNode.directionBuf[index])
 					testLocation.advance()
 
-					print(index, currNode.directionBuf[index], end=', ')
+					# print(index, currNode.directionBuf[index], end=', ')
 
 				row, col = testLocation.row, testLocation.col
-				print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
+				# print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
 
 				#print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
 				return victimColor, pelletTarget, row, col
 
 			# Get Pacman's current direction
-			prevDir = self.state.pacmanLoc.getDirection()
+			prevDir = self.state.pacmanLoc.getDirection() 
 
 			# Determines if waiting (none) is allowed as a move
 			waitAllowed = (victimColor == GhostColors.NONE)
@@ -543,6 +626,16 @@ class AStarPolicy:
 
 				# If the state is valid, add it to the priority queue
 				if valid:
+					# we need to construct a new identifier dependent on our previous moves
+	 
+	 				# check if last was initial node
+					# if currNode.isInitNode: # TODO update this to same
+					# 	# match this up with most queued move
+	  				# 	pass
+
+					# self.getNextSeqNo(self.state.pacmanLoc.row, self.state.pacmanLoc.col, Directions., self.seqno)
+
+
 					nextNode = AStarNode(
 						compressGameState(self.state),
 						fCost = int((self.hCostExtend(currNode.gCost, currNode.bufLength, victimColor) + currNode.gCost + 1) * self.fCostMultiplier()),
@@ -552,7 +645,9 @@ class AStarPolicy:
 						bufLength = currNode.bufLength + 1,
 						victimCaught = victimCaught,
 						targetCaught = targetCaught,
-						matchIdx = currNode.matchIdx
+						matchIdx = currNode.matchIdx,
+						seqno=0,#self.getNextSeqNo(self.state.pacmanLoc.row, self.state.pacmanLoc.col, currNode.direction, currNode.seqno),
+						isInitNode=False
 					)
 
 					# Add the next node to the priority queue
