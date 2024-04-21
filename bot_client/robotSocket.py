@@ -5,7 +5,7 @@ import socket
 from enum import IntEnum
 
 # Game state for event handlers
-from gameState import GameModes, Location
+from gameState import GameModes, Location # type: ignore
 
 class CommandType(IntEnum):
     STOP=0
@@ -29,7 +29,7 @@ dirMap = {
 
 class RobotSocket:
     
-    def __init__(self, robotIP: str, robotPort: int, pbClient) -> None:
+    def __init__(self, robotIP: str, robotPort: int, pbClient) -> None: # type: ignore
 
         # Robot address
         self.robotIP = robotIP
@@ -52,12 +52,11 @@ class RobotSocket:
         self.val1: int = 0
         self.val2: int = 0
 
-        self.initEventHandlers(pbClient)
+        self.initEventHandlers(pbClient) # type: ignore
 
-
-    def initEventHandlers(self, pbClient):
+    def initEventHandlers(self, pbClient): # type: ignore
         # set up event handlers
-        pbClient.subscribeToGameModeStartStopChange(self.handleGameModeStartStopChange)
+        pbClient.subscribeToGameModeStartStopChange(self.handleGameModeStartStopChange) # type: ignore
 
     def moveNoCoal(self, command: bytes, row: int, col: int) -> None:
 

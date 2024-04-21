@@ -91,7 +91,6 @@ class AStarNode:
 		directionBuf: list[Directions],
 		delayBuf: list[int],
 		bufLength: int,
-		matchIdx: int,
 		victimCaught: bool = False,
 		targetCaught: bool = False,
 		seqno: int = -1,
@@ -108,9 +107,6 @@ class AStarNode:
 		# Estimated velocity
 		self.estSpeed = 0
 		self.direction = Directions.NONE
-
-		# Match index
-		self.matchIdx = matchIdx
 
 		# Message buffer
 		self.directionBuf = directionBuf
@@ -179,8 +175,8 @@ class AStarPolicy:
 
 	class SentQueue:
 		def __init__(self):
-			self.maxPathSize = 6
-			self.minPathSize = 0
+			self.MAX_PATH_SIZE = 6
+			self.MIN_PATH_SIZE = 0
 			self.sentBuff = []
 
 	# 	class Command:
@@ -415,7 +411,7 @@ class AStarPolicy:
 			# target the nearest pellet
 			self.target = pelletTarget
 
-	async def act(self, predicted_delay: int, victimColor: GhostColors, pelletTarget: Location, lastRow: int, lastCol: int) -> tuple[GhostColors, Location, int, int]:
+	async def act(self, predicted_delay: int, victimColor: GhostColors, pelletTarget: Location) -> tuple[GhostColors, Location]:
 
 		# Make a priority queue of A-Star Nodes
 		priorityQueue: list[AStarNode] = []
@@ -427,7 +423,6 @@ class AStarPolicy:
 			gCost = 0,
 			directionBuf = [],
 			delayBuf = [],
-			matchIdx = -1,
 			bufLength = 0,
 			isInitNode=True,
 			seqno=0 # setting to 0 TODO use random number
@@ -467,110 +462,43 @@ class AStarPolicy:
 			# Reset to the current compressed state
 			decompressGameState(self.state, currNode.compressedState)
 
-			# If there is a match between the last goal position and this position, note it
-			if self.state.pacmanLoc.row == lastRow and self.state.pacmanLoc.col == lastCol:
-				currNode.matchIdx = currNode.bufLength
-
 			# If the g-cost of this node is high enough or we reached the target,
 			# make the moves and return
 
 			if currNode.victimCaught:
 
-				if (not self.state.flushEnabled):
-					currNode.matchIdx = 0
-				
-				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= self.sentQueue.maxPathSize):
-					self.state.flushActions()
-					currNode.matchIdx = 0
-					# print("FLUSH ----------------------------------")
-				elif (not len(self.state.writeServerBuf)):
-					currNode.matchIdx = 0
-
-				# print(currNode.directionsBuf)
-
-				for index in range(currNode.matchIdx, currNode.bufLength):
+				for index in range(1):
 					self.state.queueAction(
 						currNode.delayBuf[index] - (index == 0),
 						currNode.directionBuf[index]
 					)
-
-					# print(index, currNode.directionBuf[index], end=', ')
-				
-				#print('victim caught?')
 					
 				if currNode.targetCaught:
-					#print('target caught')
 					pelletTarget = self.getNearestPellet()
 
-				row, col = self.state.pacmanLoc.row, self.state.pacmanLoc.col
-				# print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
-
-				#print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
-				return victimColor, pelletTarget, row, col
+				return victimColor, pelletTarget
 
 			elif currNode.targetCaught and (victimColor == GhostColors.NONE):
 
-				if (not self.state.flushEnabled):
-					currNode.matchIdx = 0
-
-				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= self.sentQueue.maxPathSize):
-					self.state.flushActions()
-					currNode.matchIdx = 0
-					# print("FLUSH ----------------------------------")
-				elif (not len(self.state.writeServerBuf)):
-					currNode.matchIdx = 0
-
-				# print(currNode.directionBuf)
-
-				for index in range(currNode.matchIdx, currNode.bufLength):
+				for index in range(0, 1):
 					self.state.queueAction(
 						currNode.delayBuf[index] - (index == 0),
 						currNode.directionBuf[index]
 					)
 
-					# print(index, currNode.directionBuf[index], end=', ')
-			
-				#print('target caught')
 				pelletTarget = self.getNearestPellet()
 
-				row, col = self.state.pacmanLoc.row, self.state.pacmanLoc.col
-				# print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
-
-				#print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
-				return GhostColors.NONE, pelletTarget, row, col
+				return GhostColors.NONE, pelletTarget
 
 			if currNode.bufLength >= 6:
 
-				if (not self.state.flushEnabled):
-					currNode.matchIdx = 0
-
-				if (currNode.matchIdx == -1 and len(self.state.writeServerBuf) >= self.sentQueue.maxPathSize):
-					self.state.flushActions()
-					currNode.matchIdx = 0
-					# print("FLUSH ----------------------------------")
-				elif (not len(self.state.writeServerBuf)):
-					currNode.matchIdx = 0
-
-				# print(currNode.directionBuf)
-
-				testLocation = newLocation(lastRow, lastCol, self.state)
-
-				for index in range(currNode.matchIdx, min(currNode.bufLength, currNode.matchIdx + self.sentQueue.maxPathSize)):
+				for index in range(0, 1):
 					self.state.queueAction(
 						currNode.delayBuf[index] - (index == 0),
 						currNode.directionBuf[index]
 					)
 
-					testLocation.setDirection(currNode.directionBuf[index])
-					testLocation.advance()
-
-					# print(index, currNode.directionBuf[index], end=', ')
-
-				row, col = testLocation.row, testLocation.col
-				# print(f'\npath sent to go to {row}, {col} - match idx =', currNode.matchIdx)
-
-				#print(['RED', 'PINK', 'CYAN', 'ORANGE', 'NONE'][victimColor], pelletTarget)
-				return victimColor, pelletTarget, row, col
+				return victimColor, pelletTarget
 
 			# Get Pacman's current direction
 			prevDir = self.state.pacmanLoc.getDirection() 
@@ -626,6 +554,7 @@ class AStarPolicy:
 
 				# If the state is valid, add it to the priority queue
 				if valid:
+
 					# we need to construct a new identifier dependent on our previous moves
 	 
 	 				# check if last was initial node
@@ -645,7 +574,6 @@ class AStarPolicy:
 						bufLength = currNode.bufLength + 1,
 						victimCaught = victimCaught,
 						targetCaught = targetCaught,
-						matchIdx = currNode.matchIdx,
 						seqno=0,#self.getNextSeqNo(self.state.pacmanLoc.row, self.state.pacmanLoc.col, currNode.direction, currNode.seqno),
 						isInitNode=False
 					)
@@ -656,4 +584,4 @@ class AStarPolicy:
 			firstIt = False
 
 		print("Trapped...")
-		return victimColor, pelletTarget, lastRow, lastCol
+		return victimColor, pelletTarget

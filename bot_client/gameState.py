@@ -29,7 +29,7 @@ class GameModes(IntEnum):
 	CHASE   = 2
 
 	@classmethod
-	def isRunning(cls, gm):
+	def isRunning(cls, gm: IntEnum) -> bool:
 		return gm != GameModes.PAUSED
 
 # Terminal colors, based on the game mode
@@ -469,9 +469,9 @@ class GameState:
 		self.pelletArr: list[int] = [0 for _ in range(31)]
 		self.format += (31 * 'I')
 
-	def getCommandBuff(self) -> list[Command]:
+	# def getCommandBuff(self) -> list[Command]:
 		
-		return []
+	# 	return []
 
 	def lock(self) -> None:
 		'''
