@@ -218,7 +218,7 @@ class PacbotClient:
 						print("send")
 						if (self.coalesceFlag):
 							for _ in range(serverMessage.getDist()):
-								await asyncio.sleep(0.125)
+								# await asyncio.sleep(0.125)
 								response: bytes = serverMessage.getBytes()
 								self.connection.send(response)
 						else:

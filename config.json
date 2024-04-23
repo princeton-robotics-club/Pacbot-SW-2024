@@ -5,12 +5,15 @@
 
   "TrustedClientIPs": [
     "[::1]",
-    "localhost"
+    "localhost",
+    "10.48.155.174",
+    "10.48.141.40"
+
   ],
 
   "GameFPS": 24,
-  "NumActiveGhosts": 4,
-  "PythonSimulation": true,
+  "NumActiveGhosts": 0,
+  "PythonSimulation": false,
   "FlushEnabled": true,
   "CoalesceCommands": true,
 

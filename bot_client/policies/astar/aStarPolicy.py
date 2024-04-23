@@ -518,6 +518,8 @@ class AStarPolicy:
 						if (dist1 < dist2):
 							evadePenalty = 10
 
+				# TODO: calculate a turn penalty based on the amount of previous movements in the same direction (like prevDir but for multiple nodes) to add to sim time
+
 				npBefore = self.state.numPellets()
 				nspBefore = self.state.numSuperPellets()
 				valid = self.state.simulateAction(predicted_delay + firstItLag * firstIt + turnPenalty * turnLag, direction)
@@ -544,7 +546,7 @@ class AStarPolicy:
 				# If the state is valid, add it to the priority queue
 				if valid:
 
-					print(self.target)
+					# print(self.target)
 
 					nextNode = AStarNode(
 						compressGameState(self.state),

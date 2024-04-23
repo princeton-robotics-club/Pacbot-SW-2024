@@ -89,22 +89,24 @@ class RobotSocket:
         self.dist = dist
 
         # update the location to match target location
-        if self.dir == CommandDirection.NORTH:
-            self.row = row - self.dist
-            self.col = col
-        elif self.dir == CommandDirection.WEST:
-            self.row = row
-            self.col = col - self.dist
-        elif self.dir == CommandDirection.SOUTH:
-            self.row = row + self.dist
-            self.col = col
-        elif self.dir == CommandDirection.EAST:
-            self.row = row
-            self.col = col + self.dist
-        else: # NONE
-            print("Hey telling robot to move in no direction...") # this shouldn't happen
-            self.row = row
-            self.col = col
+        self.row = row
+        self.col = col
+        # if self.dir == CommandDirection.NORTH:
+        #     self.row = row - self.dist
+        #     self.col = col
+        # elif self.dir == CommandDirection.WEST:
+        #     self.row = row
+        #     self.col = col - self.dist
+        # elif self.dir == CommandDirection.SOUTH:
+        #     self.row = row + self.dist
+        #     self.col = col
+        # elif self.dir == CommandDirection.EAST:
+        #     self.row = row
+        #     self.col = col + self.dist
+        # else: # NONE
+        #     print("Hey telling robot to move in no direction...") # this shouldn't happen
+        #     self.row = row
+        #     self.col = col
         
         print(self.row, ' ', self.col)
         assert(31 >= self.row >= 0)
