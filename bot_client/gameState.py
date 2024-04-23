@@ -827,6 +827,7 @@ class GameState:
 		self.writeServerBuf.append(
 			ServerMessage(D_MESSAGES[pacmanDir], numTicks, dist, row, col)
 		)
+		print("writeServerBuf len:" + str(len(self.writeServerBuf)))
 
 	def flushActions(self) -> None:
 		self.writeServerBuf.clear()

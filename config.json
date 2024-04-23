@@ -1,18 +1,16 @@
 {
-  "ServerIP": "10.48.27.122",
+  "ServerIP": "localhost",
   "WebSocketPort": 3002,
   "OneClientPerIP": false,
 
   "TrustedClientIPs": [
     "[::1]",
-    "localhost",
-    "10.48.27.122",
-    "10.48.4.130"
+    "localhost"
   ],
 
   "GameFPS": 24,
   "NumActiveGhosts": 4,
-  "PythonSimulation": false,
+  "PythonSimulation": true,
   "FlushEnabled": true,
   "CoalesceCommands": true,
 

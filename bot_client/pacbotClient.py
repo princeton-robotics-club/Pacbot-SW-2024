@@ -67,14 +67,8 @@ def getCoalesceFlag() -> bool:
 	with open('../config.json', 'r', encoding='UTF-8') as configFile:
 		config = json.load(configFile)
 	
-	coalesce: bool = config["CoalesceCommands"]
-
-	# do not coalesce if doing sim bc server doesn't support
-	if coalesce:
-		assert(not getSimulationFlag())
-
 	# Return if should coalesce
-	return coalesce
+	return config["CoalesceCommands"]
 
 class PacbotClient:
 	'''
@@ -121,7 +115,6 @@ class PacbotClient:
 
 
 	def notifyGameModeStartStopChange(self, gameMode: bool):
-		print("notifying game change")
 		for gameModeStartStopEventHandler in self.gameModeStartStopEventHandlers:
 			gameModeStartStopEventHandler(gameMode, self.state.pacmanLoc)
 
@@ -221,8 +214,16 @@ class PacbotClient:
 				# Write a response back to the server if necessary
 				if (self.simulationFlag):
 					if self.state.writeServerBuf and self.state.writeServerBuf[0].tick():
-						response: bytes = self.state.writeServerBuf.popleft().getBytes()
-						self.connection.send(response)
+						serverMessage: ServerMessage = self.state.writeServerBuf.popleft()
+						print("send")
+						if (self.coalesceFlag):
+							for _ in range(serverMessage.getDist()):
+								await asyncio.sleep(0.125)
+								response: bytes = serverMessage.getBytes()
+								self.connection.send(response)
+						else:
+							response: bytes = serverMessage.getBytes()
+							self.connection.send(response)
 
 				# Free the event loop to allow another decision
 				await asyncio.sleep(0)
