@@ -61,13 +61,28 @@ def getRobotAddress() -> tuple[str, int]:
 	# Return the robot socket connect address
 	return config["RobotIP"], config['RobotPort']
 
+def getCoalesceFlag() -> bool:
+	
+	# Read the config file
+	with open('../config.json', 'r', encoding='UTF-8') as configFile:
+		config = json.load(configFile)
+	
+	coalesce: bool = config["CoalesceCommands"]
+
+	# do not coalesce if doing sim bc server doesn't support
+	if coalesce:
+		assert(not getSimulationFlag())
+
+	# Return if should coalesce
+	return coalesce
+
 class PacbotClient:
 	'''
 	Sample implementation of a websocket client to communicate with the
 	Pacbot game server, using asyncio.
 	'''
 
-	def __init__(self, connectURL: str, simulationFlag: bool, robotAddress: tuple[str, int]) -> None:
+	def __init__(self, connectURL: str, simulationFlag: bool, coalesceFlag: bool, robotAddress: tuple[str, int]) -> None:
 		'''
 		Construct a new Pacbot client object
 		'''
@@ -77,6 +92,9 @@ class PacbotClient:
 
 		# Simulation flag (bool)
 		self.simulationFlag: bool = simulationFlag
+
+		# Coalesce flag (bool)
+		self.coalesceFlag: bool = coalesceFlag
 
 		# Robot IP and port
 		self.robotIP: str = robotAddress[0]
@@ -96,7 +114,7 @@ class PacbotClient:
 		self.state.simulationFlag = simulationFlag
 
 		# Decision module (policy) to make high-level decisions
-		self.decisionModule: DecisionModule = DecisionModule(self.state)
+		self.decisionModule: DecisionModule = DecisionModule(self.state, self.coalesceFlag)
 
 		# Robot socket (comms) to dispatch low-level commands
 		self.robotSocket: RobotSocket = RobotSocket(self.robotIP, self.robotPort, self)
@@ -255,8 +273,8 @@ class PacbotClient:
 				# Otherwise, send out relevant messages
 				else:
 					if self.state.writeServerBuf and self.state.writeServerBuf[0].tick():
-						command: bytes = self.state.writeServerBuf.popleft().getBytes()
-						self.robotSocket.moveNoCoal(command, self.state.pacmanLoc.row, self.state.pacmanLoc.col)
+						serverCommand = self.state.writeServerBuf.popleft()
+						self.robotSocket.moveNoCoal(serverCommand, self.state.pacmanLoc.row, self.state.pacmanLoc.col)
 						self.state.writeServerBuf.clear() # TODO: remove this
 						if self.state.writeServerBuf:
 							self.state.writeServerBuf[0].skipDelay()
@@ -276,8 +294,9 @@ async def main():
 	# Get the URL to connect to
 	connectURL = getConnectURL()
 	simulationFlag = getSimulationFlag()
+	coalesceFlag = getCoalesceFlag()
 	robotAddress = getRobotAddress()
-	client = PacbotClient(connectURL, simulationFlag, robotAddress)
+	client = PacbotClient(connectURL, simulationFlag, coalesceFlag, robotAddress)
 	await client.run()
 
 	# Once the connection is closed, end the event loop

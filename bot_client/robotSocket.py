@@ -5,6 +5,7 @@ import socket
 from enum import IntEnum
 
 # Game state for event handlers
+from serverMessage import ServerMessage
 from gameState import GameModes, Location # type: ignore
 
 class CommandType(IntEnum):
@@ -49,8 +50,10 @@ class RobotSocket:
         self.seq0: int = 1
         self.seq1: int = 0
         self.typ:  int = int(CommandType.FLUSH)
-        self.val1: int = 0
-        self.val2: int = 0
+        self.row: int = 0
+        self.col: int = 0
+        self.dir: int = 0
+        self.dist: int = 0
 
         self.initEventHandlers(pbClient) # type: ignore
 
@@ -58,9 +61,11 @@ class RobotSocket:
         # set up event handlers
         pbClient.subscribeToGameModeStartStopChange(self.handleGameModeStartStopChange) # type: ignore
 
-    def moveNoCoal(self, command: bytes, row: int, col: int) -> None:
+    def moveNoCoal(self, serverCommand: ServerMessage, row: int, col: int) -> None:
+        command: bytes = serverCommand.getBytes()
+        dist: int = serverCommand.getDist()
 
-        print('sending command', command)
+        print('sending command ', command, ' dist: ', dist, ' row:', row, ' col:', col)
 
         if command == b'.':
             return
@@ -71,14 +76,40 @@ class RobotSocket:
             return
         self.flush(row,col)
 
+        # get the target row and col
+        row = serverCommand.getRow()
+        col = serverCommand.getCol()
+
         # Update the sequence number, if applicable
         self.updateSeq()
 
         # Overwrite the output for a move command
         self.typ  = int(CommandType.MOVE)
-        self.val1 = dirMap[command]
-        self.val2 = 1
+        self.dir = dirMap[command]
+        self.dist = dist
 
+        # update the location to match target location
+        if self.dir == CommandDirection.NORTH:
+            self.row = row - self.dist
+            self.col = col
+        elif self.dir == CommandDirection.WEST:
+            self.row = row
+            self.col = col - self.dist
+        elif self.dir == CommandDirection.SOUTH:
+            self.row = row + self.dist
+            self.col = col
+        elif self.dir == CommandDirection.EAST:
+            self.row = row
+            self.col = col + self.dist
+        else: # NONE
+            print("Hey telling robot to move in no direction...") # this shouldn't happen
+            self.row = row
+            self.col = col
+        
+        print(self.row, ' ', self.col)
+        assert(31 >= self.row >= 0)
+        assert(28 >= self.col >= 0)
+        
         # Dispatch the message
         self.dispatch()
 
@@ -93,8 +124,10 @@ class RobotSocket:
         self.seq0 = self.recvData[2]
         self.seq1 = self.recvData[1]
         self.typ  = int(CommandType.FLUSH)
-        self.val1 = 0
-        self.val2 = 0
+        self.row = row
+        self.col = col
+        self.dir = 0
+        self.dist = 0
 
         # Dispatch the message
         self.dispatch()
@@ -115,8 +148,10 @@ class RobotSocket:
         self.seq0 = self.recvData[2]
         self.seq1 = self.recvData[1]
         self.typ  = int(CommandType.START)
-        self.val1 = 0
-        self.val2 = 0
+        self.row = 0
+        self.col = 0
+        self.dir = 0
+        self.dist = 0
 
         # Dispatch the message
         self.dispatch()
@@ -132,8 +167,10 @@ class RobotSocket:
         self.seq0 = self.recvData[2]
         self.seq1 = self.recvData[1]
         self.typ  = int(CommandType.STOP)
-        self.val1 = 0
-        self.val2 = 0
+        self.row = 0
+        self.col = 0
+        self.dir = 0
+        self.dist = 0
 
         # Dispatch the message
         self.dispatch()
@@ -141,12 +178,16 @@ class RobotSocket:
     def wait(self) -> None:
         try:
             while True:
+                # format: "{,#,#,row,col,}"
                 self.recvData, _ = self.sock.recvfrom(1024) # type: ignore
         except:
             pass
 
         # Received sequence number
         self.recvSeq = (self.recvData[1] << 8 | self.recvData[2]) # type: ignore
+
+        # TODO: Check if bot says our message told it to do illegal move
+
 
     def updateSeq(self) -> None:
 
@@ -168,8 +209,8 @@ class RobotSocket:
     def dispatch(self) -> None:
 
         message = ""
-        inputString = "{{[{:02x}][{:02x}][{:02x}][{:02x}][{:02x}][{:02x}]}}".format(
-            self.NULL, self.seq1, self.seq0, self.typ, self.val1, self.val2
+        inputString = "{{[{:02x}][{:02x}][{:02x}][{:02x}][{:02x}][{:02x}][{:02x}][{:02x}]}}".format(
+            self.NULL, self.seq1, self.seq0, self.typ, self.row, self.col, self.dir, self.dist
         )
         inputString = inputString + '\n'
         i = 0

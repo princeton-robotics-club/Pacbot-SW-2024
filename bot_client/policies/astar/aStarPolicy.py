@@ -138,12 +138,16 @@ class AStarPolicy:
 		self,
 		state: GameState,
 		target: Location,
-		distType: DistTypes = DistTypes.PACHATTAN_DISTANCE
+		distType: DistTypes = DistTypes.PACHATTAN_DISTANCE,
+		coalesceFlag: bool = False
 	) -> None:
 
 		# Game state
 		self.state: GameState = state
 		self.stateCopy: GameState = state
+
+		# Do coalesce
+		self.coalesceFlag: bool = coalesceFlag
 
 		# Target location
 		self.target: Location = target
@@ -411,6 +415,113 @@ class AStarPolicy:
 			# target the nearest pellet
 			self.target = pelletTarget
 
+
+	def sendMessage(self, currNode, victimColor, pelletTarget)  -> tuple[bool, GhostColors, Location]:
+		# If the g-cost of this node is high enough or we reached the target,
+		# make the moves and return
+		if currNode.victimCaught:
+
+			# coalesce movements
+			movements = []
+			prevDir: Directions = Directions.NONE
+			print(len(currNode.directionBuf))
+			for index in range(len(currNode.directionBuf)):
+				if self.coalesceFlag and prevDir == currNode.directionBuf[index] and prevDir != Directions.NONE:
+					movements[-1][2] += 1
+				else:
+					movements.append([
+						currNode.delayBuf[index] - (index == 0),
+						currNode.directionBuf[index],
+						1,
+						self.state.pacmanLoc.row,
+						self.state.pacmanLoc.col
+					])
+				
+				print("coal0", self.state.pacmanLoc.row, " ", self.state.pacmanLoc.col)
+				prevDir = currNode.directionBuf[index]
+
+			# queue actions
+			for index in range(1):
+				# self.state.queueAction(
+				# 	currNode.delayBuf[index] - (index == 0),
+				# 	currNode.directionBuf[index],
+				# 	1
+				# )
+				self.state.queueAction(*movements[index])
+				
+			if currNode.targetCaught:
+				pelletTarget = self.getNearestPellet()
+
+			return True, victimColor, pelletTarget
+
+		elif currNode.targetCaught and (victimColor == GhostColors.NONE):
+
+			# coalesce movements
+			movements = []
+			prevDir: Directions = Directions.NONE
+			print(len(currNode.directionBuf))
+			for index in range(len(currNode.directionBuf)):
+				if self.coalesceFlag and prevDir == currNode.directionBuf[index] and prevDir != Directions.NONE:
+					movements[-1][2] += 1
+				else:
+					movements.append([
+						currNode.delayBuf[index] - (index == 0),
+						currNode.directionBuf[index],
+						1,
+						self.state.pacmanLoc.row,
+						self.state.pacmanLoc.col
+					])
+			
+				print("coal1", self.state.pacmanLoc.row, " ", self.state.pacmanLoc.col)
+				prevDir = currNode.directionBuf[index]
+
+			for index in range(0, 1):
+				# self.state.queueAction(
+				# 	currNode.delayBuf[index] - (index == 0),
+				# 	currNode.directionBuf[index],
+				# 	1
+				# )
+				self.state.queueAction(*movements[index])
+
+			pelletTarget = self.getNearestPellet()
+
+			return True, GhostColors.NONE, pelletTarget
+
+		if currNode.bufLength >= 6:
+
+			# coalesce movements
+			movements = []
+			prevDir: Directions = Directions.NONE
+
+			print(len(currNode.directionBuf))
+			for index in range(len(currNode.directionBuf)):
+				if self.coalesceFlag and prevDir == currNode.directionBuf[index] and prevDir != Directions.NONE:
+					movements[-1][2] += 1
+				else:
+					movements.append([
+						currNode.delayBuf[index] - (index == 0),
+						currNode.directionBuf[index],
+						1,
+						self.state.pacmanLoc.row,
+						self.state.pacmanLoc.col
+					])
+				
+				print("coal2", self.state.pacmanLoc.row, " ", self.state.pacmanLoc.col)
+				prevDir = currNode.directionBuf[index]
+
+			for index in range(0, 1):
+				# self.state.queueAction(
+				# 	currNode.delayBuf[index] - (index == 0),
+				# 	currNode.directionBuf[index],
+				# 	1
+				# )
+				self.state.queueAction(*movements[index])
+
+			return True, victimColor, pelletTarget
+		
+		return False, GhostColors.NONE, pelletTarget
+		
+
 	async def act(self, predicted_delay: int, victimColor: GhostColors, pelletTarget: Location) -> tuple[GhostColors, Location]:
 
 		# Make a priority queue of A-Star Nodes
@@ -462,43 +573,49 @@ class AStarPolicy:
 			# Reset to the current compressed state
 			decompressGameState(self.state, currNode.compressedState)
 
+			# # check if we should keep computing or stop
+			print()
+			doReturn, ghostColors, pelletTarget = self.sendMessage(currNode, victimColor, pelletTarget)
+			if doReturn:
+				return ghostColors, pelletTarget
+
 			# If the g-cost of this node is high enough or we reached the target,
 			# make the moves and return
 
-			if currNode.victimCaught:
+			# if currNode.victimCaught:
 
-				for index in range(1):
-					self.state.queueAction(
-						currNode.delayBuf[index] - (index == 0),
-						currNode.directionBuf[index]
-					)
+			# 	for index in range(1):
+			# 		self.state.queueAction(
+			# 			currNode.delayBuf[index] - (index == 0),
+			# 			currNode.directionBuf[index]
+			# 		)
 					
-				if currNode.targetCaught:
-					pelletTarget = self.getNearestPellet()
+			# 	if currNode.targetCaught:
+			# 		pelletTarget = self.getNearestPellet()
 
-				return victimColor, pelletTarget
+			# 	return victimColor, pelletTarget
 
-			elif currNode.targetCaught and (victimColor == GhostColors.NONE):
+			# elif currNode.targetCaught and (victimColor == GhostColors.NONE):
 
-				for index in range(0, 1):
-					self.state.queueAction(
-						currNode.delayBuf[index] - (index == 0),
-						currNode.directionBuf[index]
-					)
+			# 	for index in range(0, 1):
+			# 		self.state.queueAction(
+			# 			currNode.delayBuf[index] - (index == 0),
+			# 			currNode.directionBuf[index]
+			# 		)
 
-				pelletTarget = self.getNearestPellet()
+			# 	pelletTarget = self.getNearestPellet()
 
-				return GhostColors.NONE, pelletTarget
+			# 	return GhostColors.NONE, pelletTarget
 
-			if currNode.bufLength >= 6:
+			# if currNode.bufLength >= 6:
 
-				for index in range(0, 1):
-					self.state.queueAction(
-						currNode.delayBuf[index] - (index == 0),
-						currNode.directionBuf[index]
-					)
+			# 	for index in range(0, 1):
+			# 		self.state.queueAction(
+			# 			currNode.delayBuf[index] - (index == 0),
+			# 			currNode.directionBuf[index]
+			# 		)
 
-				return victimColor, pelletTarget
+			# 	return victimColor, pelletTarget
 
 			# Get Pacman's current direction
 			prevDir = self.state.pacmanLoc.getDirection() 

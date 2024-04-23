@@ -4,12 +4,15 @@ class ServerMessage:
   the Pacbot server.
 	'''
 
-  def __init__(self, messageBytes: bytes, numTicks: int):
+  def __init__(self, messageBytes: bytes, numTicks: int, dist:int=1, row:int=-1, col:int=-1):
     '''
 		Construct a new server object
 		'''
     self.messageBytes = messageBytes
     self.waitTicks = numTicks
+    self.dist = dist
+    self.row = row
+    self.col = col
 
   def tick(self):
     '''
@@ -30,3 +33,21 @@ class ServerMessage:
 		Return the bytes of this server message.
 		'''
     return self.messageBytes
+  
+  def getDist(self):
+    '''
+		Return the dist of this server message.
+		'''
+    return self.dist
+  
+  def getRow(self):
+    '''
+		Return the row of this server message.
+		'''
+    return self.row
+  
+  def getCol(self):
+    '''
+		Return the col of this server message.
+		'''
+    return self.col

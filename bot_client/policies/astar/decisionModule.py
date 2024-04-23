@@ -26,7 +26,7 @@ class DecisionModule:
 	programming for Pacbot, using asyncio.
 	'''
 
-	def __init__(self, state: GameState) -> None:
+	def __init__(self, state: GameState, coalesceFlag: bool=False) -> None:
 		'''
 		Construct a new decision module object
 		'''
@@ -35,7 +35,7 @@ class DecisionModule:
 		self.state = state
 
 		# Policy object, with the game state
-		self.policy = AStarPolicy(state, newLocation(5, 21, self.state))
+		self.policy = AStarPolicy(state, newLocation(5, 21, self.state), coalesceFlag=coalesceFlag)
 
 	async def decisionLoop(self) -> None:
 		'''

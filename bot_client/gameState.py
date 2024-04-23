@@ -808,7 +808,7 @@ class GameState:
 		# Otherwise, Pacman is safe
 		return True
 
-	def queueAction(self, numTicks: int, pacmanDir: Directions) -> None:
+	def queueAction(self, numTicks: int, pacmanDir: Directions, dist: int = 1, row:int=0, col:int=0) -> None:
 		'''
 		Helper function to queue a message to be sent to the server, with a
 		given Pacbot direction and number of ticks until the message is sent.
@@ -825,13 +825,13 @@ class GameState:
 				numTicks += 1
 
 		self.writeServerBuf.append(
-			ServerMessage(D_MESSAGES[pacmanDir], numTicks)
+			ServerMessage(D_MESSAGES[pacmanDir], numTicks, dist, row, col)
 		)
 
 	def flushActions(self) -> None:
 		self.writeServerBuf.clear()
 		self.writeServerBuf.append(
-			ServerMessage(b'f', 0)
+			ServerMessage(b'f', 0, 0, 0, 0) # don't trust these coordinates
 		)
 
 	def simulateAction(self, numTicks: int, pacmanDir: Directions) -> bool:
