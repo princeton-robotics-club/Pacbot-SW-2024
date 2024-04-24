@@ -58,6 +58,8 @@ class DecisionModule:
 			client may fall behind on updating the game state!
 			'''
 
+			await asyncio.sleep(2)
+
 			# If the current messages haven't been sent out yet and flushing isn't enabled, skip this iteration
 			if len(self.state.writeServerBuf):
 				await asyncio.sleep(0)
@@ -73,6 +75,7 @@ class DecisionModule:
 
 			# Lock the game state
 			self.state.lock()
+
 
 			# Figure out which actions to take, according to the policy
 			if self.state.gameMode != GameModes.PAUSED:

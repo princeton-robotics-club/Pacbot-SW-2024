@@ -577,6 +577,8 @@ class GameState:
 		# If the state is locked, don't update it
 		if self._locked and not lockOverride:
 			return
+		
+		self.lock()
 
 		# Unpack the values based on the format string
 		unpacked: tuple[int, ...] = unpack_from(self.format, serializedState, 0)
@@ -626,6 +628,8 @@ class GameState:
 		# Reset our guesses of the planned ghost directions
 		for ghost in self.ghosts:
 			ghost.plannedDirection = Directions.NONE
+	
+		self.unlock()
 
 	def updateGhostPlans(self, ghostPlans: dict[GhostColors, Directions]):
 		'''

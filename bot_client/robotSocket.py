@@ -77,6 +77,8 @@ class RobotSocket:
         self.flush(row,col)
 
         # get the target row and col
+        cvRow = row
+        cvCol = col
         row = serverCommand.getRow()
         col = serverCommand.getCol()
 
@@ -91,26 +93,60 @@ class RobotSocket:
         # update the location to match target location
         self.row = row
         self.col = col
+
+
         # if self.dir == CommandDirection.NORTH:
-        #     self.row = row - self.dist
-        #     self.col = col
+        #     targetRow = row - self.dist
+        #     targetCol = col
         # elif self.dir == CommandDirection.WEST:
-        #     self.row = row
-        #     self.col = col - self.dist
+        #     targetRow = row
+        #     targetCol = col - self.dist
         # elif self.dir == CommandDirection.SOUTH:
-        #     self.row = row + self.dist
-        #     self.col = col
+        #     targetRow = row + self.dist
+        #     targetCol = col
         # elif self.dir == CommandDirection.EAST:
-        #     self.row = row
-        #     self.col = col + self.dist
+        #     targetRow = row
+        #     targetCol = col + self.dist
         # else: # NONE
         #     print("Hey telling robot to move in no direction...") # this shouldn't happen
-        #     self.row = row
-        #     self.col = col
+        #     targetRow = row
+        #     targetCol = col
+
         
-        print(self.row, ' ', self.col)
-        assert(31 >= self.row >= 0)
-        assert(28 >= self.col >= 0)
+        # self.row = targetRow
+        # self.col = targetCol
+
+        # drop if doesn't line up with cv
+        if self.dir == CommandDirection.NORTH:
+            backtrackRow = row + self.dist
+            backtrackCol = col
+        elif self.dir == CommandDirection.WEST:
+            backtrackRow = row
+            backtrackCol = col + self.dist
+        elif self.dir == CommandDirection.SOUTH:
+            backtrackRow = row - self.dist
+            backtrackCol = col
+        elif self.dir == CommandDirection.EAST:
+            backtrackRow = row
+            backtrackCol = col - self.dist
+        else: # NONE
+            print("Hey telling robot to move in no direction...") # this shouldn't happen
+            backtrackRow = row
+            backtrackCol = col
+        
+        print("target destination: ", self.row, ' ', self.col)
+        if not(self.row == 32 and self.col == 32):
+            assert(31 >= self.row >= 0)
+            assert(28 >= self.col >= 0)
+
+
+        if backtrackRow != cvRow or backtrackCol != cvCol:
+
+            print("cv: ", cvRow, ' ', cvCol, ' instead backtracked to: ', backtrackRow, ' ', backtrackCol)
+            print("Dropping message...")
+            return
+
+    
         
         # Dispatch the message
         self.dispatch()

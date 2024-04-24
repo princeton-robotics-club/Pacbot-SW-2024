@@ -12,7 +12,7 @@
   ],
 
   "GameFPS": 24,
-  "NumActiveGhosts": 0,
+  "NumActiveGhosts": 4,
   "PythonSimulation": false,
   "FlushEnabled": true,
   "CoalesceCommands": true,

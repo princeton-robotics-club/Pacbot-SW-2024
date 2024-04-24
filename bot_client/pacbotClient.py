@@ -258,6 +258,18 @@ class PacbotClient:
 
 				# Wait until the bot stops sending messages
 				self.robotSocket.wait()
+
+				if self.state.isLocked():
+					await asyncio.sleep(0.01)
+					continue
+
+				# get state info
+				self.state.lock()
+				row = self.state.pacmanLoc.row
+				col = self.state.pacmanLoc.col
+				isRunning = GameModes.isRunning(self.state.gameMode)
+				self.state.unlock()
+				
 				
 				# Handle first iteration (flush)
 				if firstIt:
@@ -265,18 +277,19 @@ class PacbotClient:
 					self.robotSocket.flush(self.state.pacmanLoc.row, self.state.pacmanLoc.col)
 
 					# send start/stop depending on the gamestate
-					if (GameModes.isRunning(self.state.gameMode)):
-						self.robotSocket.start(self.state.pacmanLoc.row, self.state.pacmanLoc.col)
+					if isRunning:
+						self.robotSocket.start(row, col)
 					else:
-						self.robotSocket.stop(self.state.pacmanLoc.row, self.state.pacmanLoc.col)
+						self.robotSocket.stop(row, col)
 					firstIt = False
 
 				# Otherwise, send out relevant messages
 				else:
 					if self.state.writeServerBuf and self.state.writeServerBuf[0].tick():
 						serverCommand = self.state.writeServerBuf.popleft()
-						self.robotSocket.moveNoCoal(serverCommand, self.state.pacmanLoc.row, self.state.pacmanLoc.col)
+						self.robotSocket.moveNoCoal(serverCommand, row, col)
 						self.state.writeServerBuf.clear() # TODO: remove this
+						print(len(self.state.writeServerBuf))
 						if self.state.writeServerBuf:
 							self.state.writeServerBuf[0].skipDelay()
 

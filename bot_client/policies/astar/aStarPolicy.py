@@ -94,7 +94,7 @@ class AStarNode:
 		compressedState: GameStateCompressed,
 		fCost: int,
 		gCost: int,
-		directionBuf: list[Directions],
+		directionBuf: list[tuple[Directions, Location]],
 		delayBuf: list[int],
 		bufLength: int,
 		victimCaught: bool = False,
@@ -113,7 +113,7 @@ class AStarNode:
 		self.direction = Directions.NONE
 
 		# Message buffer
-		self.directionBuf = directionBuf
+		self.directionBuf: list[tuple[Directions, Location]] = directionBuf
 		self.delayBuf = delayBuf
 		self.bufLength = bufLength
 
@@ -319,39 +319,24 @@ class AStarPolicy:
 
 		chase = self.state.gameMode == GameModes.CHASE
 
-		# # check if top left pellet exists
-		# if self.state.superPelletAt(3, 1) and chase:
-		# 	self.target = newLocation(5, 1, self.state)
-
-		# # check if top right pellet exists
-		# elif self.state.superPelletAt(3, 26) and chase:
-		# 	self.target = newLocation(5, 26, self.state)
-
-		# # check if bottom left pellet exists
-		# elif self.state.superPelletAt(23, 1) and chase:
-		# 	self.target = newLocation(20, 3, self.state)
-
-		# # check if bottom right pellet exists
-		# elif self.state.superPelletAt(23, 26) and chase:
-		# 	self.target = newLocation(20, 24, self.state)
-
-
 		if chase:
-			# check if top left pellet exists
-			if self.state.superPelletAt(3, 1):
-				self.target = newLocation(5, 1, self.state)
+			# # check if top left pellet exists
+			# if self.state.superPelletAt(3, 1):
+			# 	self.target = newLocation(5, 1, self.state)
 
-			# check if top right pellet exists
-			elif self.state.superPelletAt(3, 26):
-				self.target = newLocation(5, 26, self.state)
+			# # check if top right pellet exists
+			# elif self.state.superPelletAt(3, 26):
+			# 	self.target = newLocation(5, 26, self.state)
 
 			# check if bottom left pellet exists
-			elif self.state.superPelletAt(23, 1):
+			if self.state.superPelletAt(23, 1):
 				self.target = newLocation(20, 3, self.state)
 
 			# check if bottom right pellet exists
 			elif self.state.superPelletAt(23, 26):
 				self.target = newLocation(20, 24, self.state)
+
+
 
 			# no super pellet
 			else:
@@ -360,25 +345,25 @@ class AStarPolicy:
 
 		# no super pellets
 		else:
-			# check if top left pellet exists
-			if self.state.superPelletAt(3, 1):
-				self.target = newLocation(5, 1, self.state)
+			# # check if top left pellet exists
+			# if self.state.superPelletAt(3, 1):
+			# 	self.target = newLocation(5, 1, self.state)
 
-			# check if top right pellet exists
-			elif self.state.superPelletAt(3, 26):
-				self.target = newLocation(5, 26, self.state)
+			# # check if top right pellet exists
+			# elif self.state.superPelletAt(3, 26):
+			# 	self.target = newLocation(5, 26, self.state)
 
 			# check if bottom left pellet exists
-			elif self.state.superPelletAt(23, 1):
-				self.target = newLocation(20, 3, self.state)
+			# if self.state.superPelletAt(23, 1):
+			# 	self.target = newLocation(20, 3, self.state)
 
-			# check if bottom right pellet exists
-			elif self.state.superPelletAt(23, 26):
-				self.target = newLocation(20, 24, self.state)
-
-			else:
-				# target the nearest pellet
-				self.target = pelletTarget
+			# # check if bottom right pellet exists
+			# elif self.state.superPelletAt(23, 26):
+			# 	self.target = newLocation(20, 24, self.state)
+   
+			# else:
+			# 	# target the nearest pellet
+			self.target = pelletTarget
 
 
 	def sendMessage(self, currNode, victimColor, pelletTarget)  -> tuple[bool, GhostColors, Location]:
@@ -387,18 +372,19 @@ class AStarPolicy:
 		movements = []
 		prevDir: Directions = Directions.NONE
 		for index in range(len(currNode.directionBuf)):
-			if self.coalesceFlag and prevDir == currNode.directionBuf[index] and prevDir != Directions.NONE:
+			if self.coalesceFlag and prevDir == currNode.directionBuf[index][0] and prevDir != Directions.NONE:
 				movements[-1][2] += 1
 			else:
+				# print("Appending " + currNode.directionBuf[index][1].row + " " + currNode.directionBuf[index][1].col)
 				movements.append([
 					currNode.delayBuf[index] - (index == 0),
-					currNode.directionBuf[index],
+					currNode.directionBuf[index][0],
 					1,
-					self.state.pacmanLoc.row,
-					self.state.pacmanLoc.col
+					currNode.directionBuf[index][1].row,
+					currNode.directionBuf[index][1].col
 				])
 		
-			prevDir = currNode.directionBuf[index]
+			prevDir = currNode.directionBuf[index][0]
 
 		# If the g-cost of this node is high enough or we reached the target,
 		# make the moves and return
@@ -418,7 +404,6 @@ class AStarPolicy:
 				self.state.queueAction(*movements[index])
 
 			pelletTarget = self.getNearestPellet()
-
 			return True, GhostColors.NONE, pelletTarget
 
 		if currNode.bufLength >= 6:
@@ -445,6 +430,7 @@ class AStarPolicy:
 			delayBuf = [],
 			bufLength = 0
 		)
+		print("pacbot is at: " + str(self.state.pacmanLoc))
 
 		# Add the initial node to the priority queue
 		heappush(priorityQueue, initialNode)
@@ -518,6 +504,9 @@ class AStarPolicy:
 						if (dist1 < dist2):
 							evadePenalty = 10
 
+				# get curr location
+				currLoc = self.state.pacmanLoc
+
 				# TODO: calculate a turn penalty based on the amount of previous movements in the same direction (like prevDir but for multiple nodes) to add to sim time
 
 				npBefore = self.state.numPellets()
@@ -545,14 +534,18 @@ class AStarPolicy:
 
 				# If the state is valid, add it to the priority queue
 				if valid:
-
-					# print(self.target)
+					# targetLoc = Location(self.state)
+					# targetLoc.row = self.state.pacmanLoc.row
+					# targetLoc.col = self.state.pacmanLoc.col
+					targetLoc = Location(self.state)
+					targetLoc.row = currLoc.row
+					targetLoc.col = currLoc.col
 
 					nextNode = AStarNode(
 						compressGameState(self.state),
 						fCost = int((self.hCostExtend(currNode.gCost, currNode.bufLength, victimColor) + currNode.gCost + 1) * self.fCostMultiplier()),
 						gCost = currNode.gCost + 2 + 2 * ((not ateNormalPellet) and (victimExists)) + 2 * (turnPenalty and victimExists) + 5 * evadePenalty,
-						directionBuf = currNode.directionBuf + [direction],
+						directionBuf = currNode.directionBuf + [(direction, targetLoc)],
 						delayBuf = currNode.delayBuf + [predicted_delay + firstItLag * firstIt + turnPenalty * turnLag],
 						bufLength = currNode.bufLength + 1,
 						victimCaught = victimCaught,
