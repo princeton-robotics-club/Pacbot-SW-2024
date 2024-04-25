@@ -29,7 +29,7 @@ class DecisionModule:
 	programming for Pacbot, using asyncio.
 	'''
 
-	def __init__(self, state: GameState, commsModule: RobotSocket) -> None:
+	def __init__(self, state: GameState) -> None:
 		'''
 		Construct a new decision module object
 		'''
@@ -46,32 +46,11 @@ class DecisionModule:
 		self.pelletTarget.row = 23
 		self.pelletTarget.col = 14
 
-		commsModule.registerDoneHandler(self.doneEventHandler)
-
-	async def makeDecision(self) -> None:
-
-		while self.state.isLocked():
-			await asyncio.sleep(0.1)
-
-		if self.state.gameMode == 0:
-			return
-
-		# Lock the game state
-		self.state.lock()
-
-		print("[ astar calculating...", end=' ')
-		self.victimColor, self.pelletTarget = self.policy.act(3, self.victimColor, self.pelletTarget)
-		print("]")
-
-		# Unlock the game state
-		self.state.unlock()
-
-	def doneEventHandler(self, done: bool):
+	async def doneEventHandler(self, done: bool):
 		if done:
-			await self.makeDecision()
-		else:
-			await asyncio.sleep(1/getGameFPS())
-
+			print("[Decision Module] triggering break from act")
+			# break from policy (this updates a flag, break might happen slightly later)
+			await self.policy.breakFromAct()
 
 	async def decisionLoop(self) -> None:
 		'''
@@ -95,34 +74,32 @@ class DecisionModule:
 			'''
 
 			# If the current messages haven't been sent out yet, skip this iteration
-			if not self.state.done or self.state.isLocked():
+			if self.state.isLocked():
 				await asyncio.sleep(0)
+				# wait = True
 				continue
 
+			# Wait for one game tick, idk why exactly...
 			if wait:
 				await asyncio.sleep(1/gameFPS)
 				wait = False
 
+			# make sure game is not paused
 			if self.state.gameMode == 0:
 				await asyncio.sleep(0)
 				continue
-
-			await asyncio.sleep(0.5)
-
 
 			# Lock the game state
 			self.state.lock()
 
 
-			done = self.state.done
+			# TODO: remove later; for testing purposes
+			await asyncio.sleep(0.5)
 
 			# Figure out which actions to take, according to the policy
-
 			print("[ astar calculating...", end=' ')
 			victimColor, pelletTarget = await self.policy.act(3, victimColor, pelletTarget)
 			print("]")
-
-			self.state.done = done
 
 			# Unlock the game state
 			self.state.unlock()

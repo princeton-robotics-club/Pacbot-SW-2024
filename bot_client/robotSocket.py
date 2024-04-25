@@ -7,7 +7,6 @@ from enum import IntEnum
 # Terminal colors
 from terminalColors import *
 
-from typing import Callable, List, Awaitable
 
 class CommandType(IntEnum):
     STOP=0
@@ -54,19 +53,6 @@ class RobotSocket:
         self.val1: int = 0
         self.val2: int = 0
         self.done: bool = False
-
-        # self.doneEventSubscribers: List[Callable[[bool], Awaitable[bool]]] = []
-        self.doneEventSubscribers: List[Callable[[bool], None]] = []
-
-    async def notifyDoneEvent(self, done: bool):
-        for handler in self.doneEventSubscribers:
-            handler(done)
-
-    def registerDoneHandler(self, doneEventHandler: Callable[[bool], None]):
-        self.doneEventSubscribers.append(doneEventHandler)
-
-    def unRegisterDoneHandler(self, doneEventHandler: Callable[[bool], Awaitable[bool]]):
-        raise Exception("unimplemented")
 
 
 
@@ -148,10 +134,6 @@ class RobotSocket:
 
         # Received sequence number
         self.recvSeq = (self.recvData[1] << 8 | self.recvData[2]) # type: ignore
-
-        # notify event handlers
-        if not bool(self.recvData[5]) != self.done:
-            self.notifyDoneEvent(not bool(self.recvData[5]))
 
         # Is done
         self.done = not bool(self.recvData[5])

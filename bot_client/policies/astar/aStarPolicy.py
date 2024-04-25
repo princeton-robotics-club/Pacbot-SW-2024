@@ -1,5 +1,7 @@
 # Heap Queues
+import asyncio
 from heapq import heappush, heappop
+from typing import List, Tuple
 
 # Game state
 from gameState import *
@@ -160,6 +162,10 @@ class AStarPolicy:
 			case DistTypes.PACHATTAN_DISTANCE:
 				self.dist = distL3
 				self.distSq = distSqL3
+				
+		# Flag for breaking from loop due to game update
+		self._doBreakForUpdateFlag = False
+		self._doBreakForUpdateFlagLock = False
 
 	def getNearestPellet(self) -> Location:
 
@@ -171,7 +177,7 @@ class AStarPolicy:
 		candidate = None
 
 		#  BFS traverse
-		queue = [(first, 0)]
+		queue:List[Tuple[Location, int]] = [(first, 0)]
 		visited = {first.hash()}
 		while queue:
 
@@ -433,8 +439,24 @@ class AStarPolicy:
 		# Lag for turns
 		turnLag = 0
 
-		# Keep proceeding until a break point is hit
+		# Keep proceeding until a break point is hit (self.doAct is used to eject from this loop if we want to stop calculating)
 		while len(priorityQueue):
+
+			# Check if we need to break because we received an update (no queuing actions, we need to recalculate)
+			# (this is a cheeky way of using flag wait for astar compute time)
+			await asyncio.sleep(0) # need to allow for context switching for this to work, so that this value will be allowed to update
+			if not self._doBreakForUpdateFlagLock and self._doBreakForUpdateFlag:
+				# get lock
+				self._doBreakForUpdateFlagLock = True
+
+				# update flag
+				self._doBreakForUpdateFlag = False
+
+				# unlock flag
+				self._doBreakForUpdateFlagLock = False
+				
+				print("[AStarPolicy] breaking from act")
+				break
 
 			# Pop the lowest f-cost node
 			currNode = heappop(priorityQueue)
@@ -633,3 +655,21 @@ class AStarPolicy:
 
 		#print("Trapped...")
 		return victimColor, pelletTarget
+	
+	'''
+	Sets break flag to true
+	'''
+	async def breakFromAct(self):
+		# get breakFlag lock
+		while self._doBreakForUpdateFlagLock:
+			await asyncio.sleep(0)
+  
+		# get lock
+		self._doBreakForUpdateFlagLock = True
+		
+		# update flag
+		self._doBreakForUpdateFlag = True
+
+		# unlock flag
+		self._doBreakForUpdateFlagLock = False
+	

@@ -4,6 +4,9 @@ import json
 # Asyncio (for concurrency)
 import asyncio
 
+# typing for event handlers
+from typing import Any, Awaitable, Callable, List
+
 # Websockets (for communication with the server)
 from websockets.sync.client import connect, ClientConnection # type: ignore
 from websockets.exceptions import ConnectionClosedError # type: ignore
@@ -90,12 +93,29 @@ class PacbotClient:
 
 		# Robot socket (comms) to dispatch low-level commands
 		self.robotSocket: RobotSocket = RobotSocket(self.robotIP, self.robotPort)
-		self.robotSocket.registerDoneHandler(self.doneEventHandler)
 
 		# Decision module (policy) to make high-level decisions
-		self.decisionModule: DecisionModule = DecisionModule(self.state, self.robotSocket)
+		self.decisionModule: DecisionModule = DecisionModule(self.state)
 
-	def doneEventHandler(self, newDone: bool):
+		# Done event subscribers
+		self.doneEventSubscribers: List[Callable[[bool],  Awaitable[Any]]] = []
+		self.registerDoneHandler(self.doneEventHandler) # example of registering a subscriber
+		self.registerDoneHandler(self.decisionModule.doneEventHandler)
+
+
+	async def notifyDoneEvent(self, done: bool):
+		for handler in self.doneEventSubscribers:
+			await handler(done)
+
+	def registerDoneHandler(self, doneEventHandler: Callable[[bool], Awaitable[Any]]):
+		self.doneEventSubscribers.append(doneEventHandler)
+
+	def unRegisterDoneHandler(self, doneEventHandler: Callable[[bool], Awaitable[Any]]):
+		raise Exception("unimplemented")
+	
+
+
+	async def doneEventHandler(self, newDone: bool):
 		if newDone:
 			print(f'{GREEN}robot just told us it\'s done{NORMAL}')
 		else:
@@ -210,8 +230,8 @@ class PacbotClient:
 		# Keep track if the first iteration has taken place
 		firstIt = True
 
-		# Keep track of whether we've sent a message before the robot told us it's done
-		sent = False
+		# keep track of when robot is done
+		done = True
 
 		# Keep sending messages as long as the server connection is open
 		while self.isOpen():
@@ -219,15 +239,14 @@ class PacbotClient:
 			# Try to receive messages (and skip to except in case of an error)
 			try:
 
-				# # Wait until the bot stops sending messages
-				# doneBefore = self.state.done
-				# self.state.done = self.robotSocket.wait()
-				# if not self.state.gameMode == 0:
-				# 	if not doneBefore and self.state.done:
-				# 		print(f'{GREEN}robot just told us it\'s done{NORMAL}')
-				# 	if doneBefore and not self.state.done:
-				# 		print(f'{RED}robot started a move{NORMAL}')
+				# check for notify event handlers of done change
+				newDone = self.robotSocket.wait()
+				if done != newDone:
+					newDone = done
 
+					# notify change - awaiting a coroutine (not creating a new task) justification here: https://stackoverflow.com/a/55766474
+					await self.notifyDoneEvent(newDone)
+            		
 				# Handle first iteration (flush)
 				if firstIt:
 					self.robotSocket.start()
