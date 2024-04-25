@@ -88,11 +88,19 @@ class PacbotClient:
 		# Game state object to store the game information
 		self.state: GameState = GameState()
 
-		# Decision module (policy) to make high-level decisions
-		self.decisionModule: DecisionModule = DecisionModule(self.state)
-
 		# Robot socket (comms) to dispatch low-level commands
 		self.robotSocket: RobotSocket = RobotSocket(self.robotIP, self.robotPort)
+		self.robotSocket.registerDoneHandler(self.doneEventHandler)
+
+		# Decision module (policy) to make high-level decisions
+		self.decisionModule: DecisionModule = DecisionModule(self.state, self.robotSocket)
+
+	def doneEventHandler(self, newDone: bool):
+		if newDone:
+			print(f'{GREEN}robot just told us it\'s done{NORMAL}')
+		else:
+			print(f'{RED}robot has started executing{NORMAL}')
+
 
 	async def run(self) -> None:
 		'''
@@ -211,14 +219,14 @@ class PacbotClient:
 			# Try to receive messages (and skip to except in case of an error)
 			try:
 
-				# Wait until the bot stops sending messages
-				doneBefore = self.state.done
-				self.state.done = self.robotSocket.wait()
-				if not self.state.gameMode == 0:
-					if not doneBefore and self.state.done:
-						print(f'{GREEN}robot just told us it\'s done{NORMAL}')
-					if doneBefore and not self.state.done:
-						print(f'{RED}robot started a move{NORMAL}')
+				# # Wait until the bot stops sending messages
+				# doneBefore = self.state.done
+				# self.state.done = self.robotSocket.wait()
+				# if not self.state.gameMode == 0:
+				# 	if not doneBefore and self.state.done:
+				# 		print(f'{GREEN}robot just told us it\'s done{NORMAL}')
+				# 	if doneBefore and not self.state.done:
+				# 		print(f'{RED}robot started a move{NORMAL}')
 
 				# Handle first iteration (flush)
 				if firstIt:

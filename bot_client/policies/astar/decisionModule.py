@@ -10,6 +10,9 @@ from gameState import *
 # A-Star Policy
 from policies.astar.aStarPolicy import *
 
+# Comms module type
+from robotSocket import RobotSocket
+
 # Get the FPS of the server from the config.json file
 def getGameFPS() -> int:
 
@@ -26,7 +29,7 @@ class DecisionModule:
 	programming for Pacbot, using asyncio.
 	'''
 
-	def __init__(self, state: GameState) -> None:
+	def __init__(self, state: GameState, commsModule: RobotSocket) -> None:
 		'''
 		Construct a new decision module object
 		'''
@@ -36,6 +39,39 @@ class DecisionModule:
 
 		# Policy object, with the game state
 		self.policy = AStarPolicy(state, newLocation(5, 21, self.state))
+
+
+		self.victimColor = GhostColors.NONE
+		self.pelletTarget = Location(self.state)
+		self.pelletTarget.row = 23
+		self.pelletTarget.col = 14
+
+		commsModule.registerDoneHandler(self.doneEventHandler)
+
+	async def makeDecision(self) -> None:
+
+		while self.state.isLocked():
+			await asyncio.sleep(0.1)
+
+		if self.state.gameMode == 0:
+			return
+
+		# Lock the game state
+		self.state.lock()
+
+		print("[ astar calculating...", end=' ')
+		self.victimColor, self.pelletTarget = self.policy.act(3, self.victimColor, self.pelletTarget)
+		print("]")
+
+		# Unlock the game state
+		self.state.unlock()
+
+	def doneEventHandler(self, done: bool):
+		if done:
+			await self.makeDecision()
+		else:
+			await asyncio.sleep(1/getGameFPS())
+
 
 	async def decisionLoop(self) -> None:
 		'''
