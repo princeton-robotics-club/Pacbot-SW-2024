@@ -29,6 +29,14 @@ func (gs *gameState) interpretCommand(msg []byte) {
 	case 'P':
 		gs.play()
 
+	// Restart command
+	case 'r':
+		gs.restart()
+
+	// Restart command
+	case 'R':
+		gs.restart()
+
 	// Move up (decrease row index)
 	case 'w':
 		gs.movePacmanDir(up)

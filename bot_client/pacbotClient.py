@@ -62,11 +62,11 @@ def getRobotAddress() -> tuple[str, int]:
 	return config["RobotIP"], config['RobotPort']
 
 def getCoalesceFlag() -> bool:
-	
+
 	# Read the config file
 	with open('../config.json', 'r', encoding='UTF-8') as configFile:
 		config = json.load(configFile)
-	
+
 	# Return if should coalesce
 	return config["CoalesceCommands"]
 
@@ -269,8 +269,8 @@ class PacbotClient:
 				col = self.state.pacmanLoc.col
 				isRunning = GameModes.isRunning(self.state.gameMode)
 				self.state.unlock()
-				
-				
+
+
 				# Handle first iteration (flush)
 				if firstIt:
 					# begin by flushing buff
@@ -287,7 +287,7 @@ class PacbotClient:
 				else:
 					if self.state.writeServerBuf and self.state.writeServerBuf[0].tick():
 						serverCommand = self.state.writeServerBuf.popleft()
-						self.robotSocket.moveNoCoal(serverCommand, row, col)
+						self.robotSocket.moveNoCoal(serverCommand, row, col, self.state.writeServerBuf)
 						self.state.writeServerBuf.clear() # TODO: remove this
 						print(len(self.state.writeServerBuf))
 						if self.state.writeServerBuf:

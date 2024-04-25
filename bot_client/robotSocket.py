@@ -8,6 +8,8 @@ from enum import IntEnum
 from serverMessage import ServerMessage
 from gameState import GameModes, Location # type: ignore
 
+from collections import deque
+
 class CommandType(IntEnum):
     STOP=0
     START=1
@@ -29,7 +31,7 @@ dirMap = {
 }
 
 class RobotSocket:
-    
+
     def __init__(self, robotIP: str, robotPort: int, pbClient) -> None: # type: ignore
 
         # Robot address
@@ -61,15 +63,14 @@ class RobotSocket:
         # set up event handlers
         pbClient.subscribeToGameModeStartStopChange(self.handleGameModeStartStopChange) # type: ignore
 
-    def moveNoCoal(self, serverCommand: ServerMessage, row: int, col: int) -> None:
+    def moveNoCoal(self, serverCommand: ServerMessage, row: int, col: int, buffer: deque[ServerMessage]) -> None:
         command: bytes = serverCommand.getBytes()
         dist: int = serverCommand.getDist()
-
-        print('sending command ', command, ' dist: ', dist, ' row:', row, ' col:', col)
+        print('sending command ', command, ' dist:', dist, ' row:', row, ' col:', col)
 
         if command == b'.':
             return
-        
+
         # if we changed our mind, return
         if command == b"f":
             self.flush(row, col)
@@ -112,7 +113,7 @@ class RobotSocket:
         #     targetRow = row
         #     targetCol = col
 
-        
+
         # self.row = targetRow
         # self.col = targetCol
 
@@ -133,7 +134,7 @@ class RobotSocket:
             print("Hey telling robot to move in no direction...") # this shouldn't happen
             backtrackRow = row
             backtrackCol = col
-        
+
         print("target destination: ", self.row, ' ', self.col)
         if not(self.row == 32 and self.col == 32):
             assert(31 >= self.row >= 0)
@@ -142,17 +143,34 @@ class RobotSocket:
 
         if backtrackRow != cvRow or backtrackCol != cvCol:
 
-            print("cv: ", cvRow, ' ', cvCol, ' instead backtracked to: ', backtrackRow, ' ', backtrackCol)
-            print("Dropping message...")
+            # cv row, col is also what gamestate believe row, col to be
+            print(f"sent dist: {self.dist}\ncv says:    {cvRow} {cvCol}\nmsg thinks: {backtrackRow} {backtrackCol}\n[!] dropping msg ...")
+            print("current msg buffer (head is first):")
+            for msg in buffer:
+                msg_cmd  = msg.getBytes()
+                msg_dist = msg.getDist()
+                msg_row  = msg.getRow()
+                msg_col  = msg.getCol()
+                print(f"    cmd: {msg_cmd} d: {msg_dist} r: {msg_row} c: {msg_col}")
+
+
+            #for msg in self.state.writeServerBuf:
+            #    print(msg)
+
+
+            #print('dist: ', self.dist)
+            #print("cv: ", cvRow, ' ', cvCol, ' instead backtracked to: ', backtrackRow, ' ', backtrackCol)
+            #print("Dropping message...")
             return
 
-    
-        
+
+
         # Dispatch the message
+        print('-- msg dispatched ...')
         self.dispatch()
 
     def flush(self, row: int, col: int) -> None:
-        
+
         print('flush ---------------- ', row, col)
 
         # Update the sequence number, if applicable

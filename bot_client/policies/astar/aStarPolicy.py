@@ -17,6 +17,9 @@ MAX_OUT_QUEUE_SIZE = 6
 # Maximum size of path that will be explored
 MAX_PATH_SIZE = 6 # TODO: make this dynamic by allowing straighter paths to be longer??
 
+# Asyncio (for concurrency)
+import asyncio
+
 '''
 Cost Explanations:
 
@@ -211,17 +214,17 @@ class AStarPolicy:
 
 		#print('No nearest...')
 		return first
-	
+
 	def scaryVictim(self, victimColor: GhostColors) -> bool:
-		
+
 		V = self.state.ghosts[victimColor]
 
 		if (victimColor == GhostColors.NONE) or self.state.wallAt(V.location.row, V.location.col):
 			return False
-		
+
 		if (V.spawning):
 			return True
-		
+
 		for color in GhostColors:
 			G = self.state.ghosts[color]
 			if (color != victimColor) and (not G.spawning) and (not G.isFrightened()):
@@ -229,11 +232,11 @@ class AStarPolicy:
 					if self.dist(V.location, G.location) <= 2:
 						#print('re-assigning victim')
 						return True
-					
+
 		return False
-	
+
 	def getNearestVictim(self) -> GhostColors:
-		
+
 		closest, closestDist = GhostColors.NONE, INF
 		for color in GhostColors:
 			if self.state.ghosts[color].isFrightened() and not self.state.ghosts[color].spawning:
@@ -360,16 +363,16 @@ class AStarPolicy:
 			# # check if bottom right pellet exists
 			# elif self.state.superPelletAt(23, 26):
 			# 	self.target = newLocation(20, 24, self.state)
-   
+
 			# else:
 			# 	# target the nearest pellet
 			self.target = pelletTarget
 
 
-	def sendMessage(self, currNode, victimColor, pelletTarget)  -> tuple[bool, GhostColors, Location]:
+	def sendMessage(self, currNode: AStarNode, victimColor: GhostColors, pelletTarget: Location)  -> tuple[bool, GhostColors, Location]:
 
 		# coalesce movements (data prep)
-		movements = []
+		movements: list[list[int | Directions]] = []
 		prevDir: Directions = Directions.NONE
 		for index in range(len(currNode.directionBuf)):
 			if self.coalesceFlag and prevDir == currNode.directionBuf[index][0] and prevDir != Directions.NONE:
@@ -383,7 +386,7 @@ class AStarPolicy:
 					currNode.directionBuf[index][1].row,
 					currNode.directionBuf[index][1].col
 				])
-		
+
 			prevDir = currNode.directionBuf[index][0]
 
 		# If the g-cost of this node is high enough or we reached the target,
@@ -392,7 +395,9 @@ class AStarPolicy:
 			# queue actions
 			for index in range(min(len(movements), MAX_OUT_QUEUE_SIZE)):
 				self.state.queueAction(*movements[index])
-				
+
+			print("queueA length: ", len(self.state.writeServerBuf))
+
 			if currNode.targetCaught:
 				pelletTarget = self.getNearestPellet()
 
@@ -403,6 +408,8 @@ class AStarPolicy:
 			for index in range(min(len(movements), MAX_OUT_QUEUE_SIZE)):
 				self.state.queueAction(*movements[index])
 
+			print("queueB length: ", len(self.state.writeServerBuf))
+
 			pelletTarget = self.getNearestPellet()
 			return True, GhostColors.NONE, pelletTarget
 
@@ -411,12 +418,17 @@ class AStarPolicy:
 			for index in range(min(len(movements), MAX_OUT_QUEUE_SIZE)):
 				self.state.queueAction(*movements[index])
 
+			print("queueC length: ", len(self.state.writeServerBuf))
+
 			return True, victimColor, pelletTarget
-		
+
 		return False, GhostColors.NONE, pelletTarget
-		
+
 
 	async def act(self, predicted_delay: int, victimColor: GhostColors, pelletTarget: Location) -> tuple[GhostColors, Location]:
+
+		print("STARTING A*")
+		print(f"we think we're at ({self.state.pacmanLoc.row}, {self.state.pacmanLoc.col})")
 
 		# Make a priority queue of A-Star Nodes
 		priorityQueue: list[AStarNode] = []
@@ -472,7 +484,7 @@ class AStarPolicy:
 				return ghostColors, pelletTarget
 
 			# Get Pacman's current direction
-			prevDir = self.state.pacmanLoc.getDirection() 
+			prevDir = self.state.pacmanLoc.getDirection()
 
 			# Determines if waiting (none) is allowed as a move
 			waitAllowed = (victimColor == GhostColors.NONE)
@@ -493,14 +505,14 @@ class AStarPolicy:
 					turnPenalty = 1
 
 					if (victimColor != GhostColors.NONE) and not self.state.ghosts[victimColor].spawning:
-						
+
 						loc: Location = Location(self.state)
 						loc.update(self.state.pacmanLoc.serialize())
 						loc.setDirection(direction)
 						dist1 = self.dist(loc, self.state.ghosts[victimColor].location)
 						loc.advance()
 						dist2 = self.dist(loc, self.state.ghosts[victimColor].location)
-						
+
 						if (dist1 < dist2):
 							evadePenalty = 10
 
@@ -525,7 +537,7 @@ class AStarPolicy:
 				# Determines if the scared ghost 'victim' was caught
 				victimCaught = (victimColor != GhostColors.NONE) and \
 					((not self.state.ghosts[victimColor].isFrightened()) or self.state.ghosts[victimColor].spawning)
-				
+
 				# Select a new target
 				self.selectTarget(pelletTarget)
 
@@ -556,6 +568,8 @@ class AStarPolicy:
 					heappush(priorityQueue, nextNode)
 
 			firstIt = False
+
+			await asyncio.sleep(0)
 
 		print("Trapped...")
 		return victimColor, pelletTarget

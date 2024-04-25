@@ -61,7 +61,7 @@ class DecisionModule:
 			await asyncio.sleep(2)
 
 			# If the current messages haven't been sent out yet and flushing isn't enabled, skip this iteration
-			if len(self.state.writeServerBuf):
+			if len(self.state.writeServerBuf) or self.state.isLocked():
 				await asyncio.sleep(0)
 				# wait = True
 				continue
