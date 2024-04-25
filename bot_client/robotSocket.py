@@ -7,19 +7,9 @@ from enum import IntEnum
 # Terminal colors
 from terminalColors import *
 
+# Command types
+from shared import CommandType, CommandDirection
 
-class CommandType(IntEnum):
-    STOP=0
-    START=1
-    FLUSH=2
-    MOVE=3
-
-class CommandDirection(IntEnum):
-    NONE=-1
-    NORTH=0
-    EAST=1
-    WEST=2
-    SOUTH=3
 
 dirMap = {
     b'w': CommandDirection.NORTH,
@@ -54,15 +44,15 @@ class RobotSocket:
         self.val2: int = 0
         self.done: bool = False
 
-    def moveNoCoal(self, command: bytes, row: int, col: int, dist: int) -> None:
+    def moveNoCoal(self, command: bytes, row: int, col: int, dist: int, updateSeq:bool=True) -> None:
 
-        print(f'{CYAN}sending command{NORMAL}', command, dist, '->', row, col)
 
         if command == b'.':
             return
 
         # Update the sequence number, if applicable
-        self.updateSeq()
+        if updateSeq:
+            self.updateSeq()
 
         # Overwrite the output for a move command
         self.typ  = int(CommandType.MOVE)
@@ -71,6 +61,8 @@ class RobotSocket:
 
         # Dispatch the message
         self.dispatch(row, col)
+
+        print(f'{CYAN}sending command{NORMAL}', ' command:', command, ' dist', dist, '->', row, col, " #", int(self.seq1 << 8 | self.seq0))
 
     def flush(self, row: int, col: int) -> None:
 
@@ -123,6 +115,9 @@ class RobotSocket:
         # Dispatch the message
         self.dispatch(0, 0)
 
+    """ Wait returns if the robot needs a new command
+    - when: recvSeq == most recent sent seqno and robot says its done
+    """
     def wait(self) -> bool:
         try:
             while True:
@@ -131,12 +126,24 @@ class RobotSocket:
             pass
 
         # Received sequence number
-        self.recvSeq = (self.recvData[1] << 8 | self.recvData[2]) # type: ignore
+        recvSeq = (self.recvData[1] << 8 | self.recvData[2]) # type: ignore
 
         # Is done
-        self.done = not bool(self.recvData[5])
+        done = not bool(self.recvData[5])
 
-        return self.done
+        # debug
+        if done != self.done:
+            if done:
+                print(f'{RED}robot just told us it\'s done{NORMAL} #', int(recvSeq))
+            else:
+                print(f'{GREEN}robot has started executing{NORMAL} #', int(recvSeq))
+
+        # update
+        needsNewCommand = (self.seq1 << 8 | self.seq0) == recvSeq and self.done
+        self.recvSeq = recvSeq
+        self.done = done
+
+        return needsNewCommand
 
     def updateSeq(self) -> None:
 
@@ -174,6 +181,6 @@ class RobotSocket:
 
         message = bytes(message, "ascii")
 
-        print(message)
+        # print(message)
 
         self.sock.sendto(message, (self.robotIP, self.robotPort))

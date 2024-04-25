@@ -44,6 +44,9 @@ class DecisionModule:
 		self.pelletTarget.row = 23
 		self.pelletTarget.col = 14
 
+		# gate for calculations
+		self.doPolicy = True
+
 	''' Immediately halt all policy calculations
 	break from policy.act() (this updates a flag, break might happen slightly later)
 	'''
@@ -52,7 +55,7 @@ class DecisionModule:
 		await self.policy.breakFromAct()
 
 	async def doneEventHandler(self, done: bool):
-		if done:
+		if not done:
 			await self.haltPolicyCalculations()
 
 	async def cvUpdateEventHandler(self):
@@ -79,7 +82,11 @@ class DecisionModule:
 			client may fall behind on updating the game state!
 			'''
 
+			# if not self.doPolicy:
+			# 	continue
+
 			# If the current messages haven't been sent out yet, skip this iteration
+			# print("get lock decision loop")
 			if self.state.isLocked():
 				await asyncio.sleep(0)
 				# wait = True
@@ -97,20 +104,25 @@ class DecisionModule:
 
 			# Lock the game state
 			self.state.lock()
+			# print("done get lock decision loop")
 
 
-			# TODO: remove later; for testing purposes
-			await asyncio.sleep(0.5)
+			# # TODO: remove later; for testing purposes
+			# await asyncio.sleep(0.5)
 
 			# Figure out which actions to take, according to the policy
-			print("[ astar calculating...", end=' ')
-			victimColor, pelletTarget = await self.policy.act(3, victimColor, pelletTarget)
+			print("[ astar calculating...")
+			# victimColor, pelletTarget = await self.policy.act(3, victimColor, pelletTarget)
+			victimColor, pelletTarget = await self.policy.act(24, victimColor, pelletTarget)
 			print("]")
 
 			# Unlock the game state
 			self.state.unlock()
+			# print("unlock decision loop")
 
 			# Free up the event loop
 			await asyncio.sleep(0.005)
 
 			wait = True
+
+			self.doPolicy = False

@@ -177,31 +177,16 @@ class AStarPolicy:
 		candidate = None
 
 		#  BFS traverse
-		queue:List[Tuple[Location, int]] = [(first, 0)]
+		queue = [first]
 		visited = {first.hash()}
 		while queue:
 
 			# pop from queue
-			item = queue.pop(0)
-			currLoc, depth = item
-			depth += 1
+			currLoc = queue.pop(0)
 
 			# Base Case: Found a pellet
-			if self.state.pelletAt(currLoc.row, currLoc.col) and \
-				not self.state.superPelletAt(currLoc.row, currLoc.col):
-
-				# winner
-				if depth >= 5:
-					return currLoc
-
-				# if there is indeed a close pellet, then go for it if we have explored up to this radius
-				if depth >= 10 and candidate != None:
-					return candidate
-
-				if candidate != None:
-					candidate = currLoc
-
-
+			if self.state.pelletAt(currLoc.row, currLoc.col) and not self.state.superPelletAt(currLoc.row, currLoc.col):
+				return currLoc
 
 			# Loop over the directions
 			for direction in Directions:
@@ -219,7 +204,7 @@ class AStarPolicy:
 
 				# avoid same node twice and check this is a valid move
 				if nextLoc.hash() not in visited and valid:
-					queue.append((nextLoc, depth))
+					queue.append(nextLoc)
 					visited.add(nextLoc.hash())
 
 		#print('No nearest...')
@@ -374,16 +359,16 @@ class AStarPolicy:
 
 		chase = self.state.gameMode == GameModes.CHASE
 
-		# # check if top left pellet exists
-		# if self.state.superPelletAt(3, 1) and chase:
-		# 	self.target = newLocation(5, 1, self.state)
+		# check if top left pellet exists
+		if self.state.superPelletAt(3, 1) and chase:
+			self.target = newLocation(5, 1, self.state)
 
-		# # check if top right pellet exists
-		# elif self.state.superPelletAt(3, 26) and chase:
-		# 	self.target = newLocation(5, 26, self.state)
+		# check if top right pellet exists
+		elif self.state.superPelletAt(3, 26) and chase:
+			self.target = newLocation(5, 26, self.state)
 
 		# check if bottom left pellet exists
-		if self.state.superPelletAt(23, 1) and chase:
+		elif self.state.superPelletAt(23, 1) and chase:
 			self.target = newLocation(20, 3, self.state)
 
 		# check if bottom right pellet exists
@@ -396,6 +381,7 @@ class AStarPolicy:
 			self.target = pelletTarget
 
 	async def act(self, predicted_delay: int, victimColor: GhostColors, pelletTarget: Location) -> tuple[GhostColors, Location]:
+		print("targeting: ", pelletTarget.row, " ", pelletTarget.col)
 
 		# Make a priority queue of A-Star Nodes
 		priorityQueue: list[AStarNode] = []
@@ -444,19 +430,19 @@ class AStarPolicy:
 
 			# Check if we need to break because we received an update (no queuing actions, we need to recalculate)
 			# (this is a cheeky way of using flag wait for astar compute time)
-			await asyncio.sleep(0) # need to allow for context switching for this to work, so that this value will be allowed to update
-			if not self._doBreakForUpdateFlagLock and self._doBreakForUpdateFlag:
-				# get lock
-				self._doBreakForUpdateFlagLock = True
+			# await asyncio.sleep(0) # need to allow for context switching for this to work, so that this value will be allowed to update
+			# if not self._doBreakForUpdateFlagLock and self._doBreakForUpdateFlag:
+			# 	# get lock
+			# 	self._doBreakForUpdateFlagLock = True
 
-				# update flag
-				self._doBreakForUpdateFlag = False
+			# 	# update flag
+			# 	self._doBreakForUpdateFlag = False
 
-				# unlock flag
-				self._doBreakForUpdateFlagLock = False
+			# 	# unlock flag
+			# 	self._doBreakForUpdateFlagLock = False
 				
-				print("[AStarPolicy] breaking from act")
-				break
+			# 	print(f'{RED}[AStarPolicy] breaking from act{NORMAL}')
+			# 	break
 
 			# Pop the lowest f-cost node
 			currNode = heappop(priorityQueue)
@@ -502,18 +488,6 @@ class AStarPolicy:
 
 			elif currNode.targetCaught and (victimColor == GhostColors.NONE):
 
-				# testLoc = newLocation(startRow, startCol, self.state)
-				# for index in range(1):
-				# 	testLoc.setDirection(currNode.directionBuf[index])
-				# 	testLoc.advance()
-
-				# 	self.state.queueAction(
-				# 		currNode.delayBuf[index] - (index == 0),
-				# 		currNode.directionBuf[index],
-				# 		testLoc.row,
-				# 		testLoc.col
-				# 	)
-
 				testLoc = newLocation(startRow, startCol, self.state)
 				lastDir = currNode.directionBuf[0]
 				dist = 0
@@ -544,18 +518,6 @@ class AStarPolicy:
 				return GhostColors.NONE, pelletTarget
 
 			if currNode.bufLength >= 8:
-
-				# testLoc = newLocation(startRow, startCol, self.state)
-				# for index in range(1):
-				# 	testLoc.setDirection(currNode.directionBuf[index])
-				# 	testLoc.advance()
-
-				# 	self.state.queueAction(
-				# 		currNode.delayBuf[index] - (index == 0),
-				# 		currNode.directionBuf[index],
-				# 		testLoc.row,
-				# 		testLoc.col
-				# 	)
 
 				testLoc = newLocation(startRow, startCol, self.state)
 				lastDir = currNode.directionBuf[0]
@@ -661,6 +623,7 @@ class AStarPolicy:
 	'''
 	async def breakFromAct(self):
 		# get breakFlag lock
+		# print("get lock breakFromAct")
 		while self._doBreakForUpdateFlagLock:
 			await asyncio.sleep(0)
   
@@ -672,4 +635,6 @@ class AStarPolicy:
 
 		# unlock flag
 		self._doBreakForUpdateFlagLock = False
+
+		# print("release  lock breakFromAct")
 	

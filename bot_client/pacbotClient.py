@@ -99,17 +99,20 @@ class PacbotClient:
 
 		# CV update event subscribers
 		self._cvUpdateEventSubscribers: List[Callable[[],  Awaitable[Any]]] = []
-		self.registerCvUpdateHandler(self.decisionModule.cvUpdateEventHandler)
+		# self.registerCvUpdateHandler(self.decisionModule.cvUpdateEventHandler)
 
 		# Done event subscribers
 		self._doneEventSubscribers: List[Callable[[bool],  Awaitable[Any]]] = []
 		self.registerDoneHandler(self.doneEventHandler) # example of registering a subscriber
 		self.registerDoneHandler(self.decisionModule.doneEventHandler)
 
+		# Gate for sending messages
+		self._hasSent = False
+
 
 	""" Incoming CV information event """
 	async def notifyCvUpdateEvent(self):
-		print("PacbotClient - Event: CV Update - pacbot location has changed")
+		# print("PacbotClient - Event: CV Update - pacbot location has changed")
 		for handler in self._cvUpdateEventSubscribers:
 			await handler()
 
@@ -121,7 +124,7 @@ class PacbotClient:
 
 	""" PB Done moving event """
 	async def notifyDoneEvent(self, done: bool):
-		print("PacbotClient - Event: Done Update - " + str(done))
+		# print("PacbotClient - Event: Done Update - " + str(done))
 		for handler in self._doneEventSubscribers:
 			await handler(done)
 
@@ -135,9 +138,23 @@ class PacbotClient:
 
 	async def doneEventHandler(self, newDone: bool):
 		if newDone:
-			print(f'{GREEN}robot just told us it\'s done{NORMAL}')
+			print("PacbotClient - Event: Pacbot needs a new command ")
+			# print("get locked doneEventHandler")
+			while (self.state.isLocked()):
+				await asyncio.sleep(0)
+			self.state.lock()
+			self._hasSent = False
+			self.state.writeServerBuf.clear()
+			self.state.unlock()
+
+			# print("release locked doneEventHandler")
+			# print(f'{RED}robot just told us it\'s done{NORMAL}')
 		else:
-			print(f'{RED}robot has started executing{NORMAL}')
+			# print(f'{GREEN}robot has started executing{NORMAL}')
+			pass
+
+	# async def cvEventHandler(self):
+	# 	sk
 
 
 	async def run(self) -> None:
@@ -228,6 +245,8 @@ class PacbotClient:
 				newRow = self.state.pacmanLoc.row
 				newCol = self.state.pacmanLoc.col
 				if pacRow != newRow or pacCol != newCol:
+					pacRow = newRow
+					pacCol = newCol
 					await self.notifyCvUpdateEvent()
 
 				# Write a response back to the server if necessary
@@ -258,8 +277,12 @@ class PacbotClient:
 		# Keep track if the first iteration has taken place
 		firstIt = True
 
-		# keep track of when robot is done
-		done = True
+		# keep track of when robot is needs more instructions
+		needsNewInstructionOld = False
+		oldMsg:bytes=bytes()
+		oldRow:int=0
+		oldCol:int=0
+		oldDist:int=0
 
 		# Keep sending messages as long as the server connection is open
 		while self.isOpen():
@@ -267,33 +290,49 @@ class PacbotClient:
 			# Try to receive messages (and skip to except in case of an error)
 			try:
 
-				# check for notify event handlers of done change
-				newDone = self.robotSocket.wait()
-				if done != newDone:
-					newDone = done
+				# notify request for new instruction
+				needsNewInstruction = self.robotSocket.wait()
+				# edge
+				if needsNewInstruction != needsNewInstructionOld:
+					# rising edge
+					# if needsNewInstruction:
+					# 	# notify change - awaiting a coroutine (not creating a new task) justification here: https://stackoverflow.com/a/55766474
+					# 	await self.notifyDoneEvent(True)
 
-					# notify change - awaiting a coroutine (not creating a new task) justification here: https://stackoverflow.com/a/55766474
-					await self.notifyDoneEvent(newDone)
+					await self.notifyDoneEvent(needsNewInstruction)
+					
+					needsNewInstructionOld = needsNewInstruction
+
             		
 				# Handle first iteration (flush)
 				if firstIt:
 					self.robotSocket.start()
+					# print("get lock commsLoop")
 					while (self.state.isLocked()):
 						await asyncio.sleep(0)
 					self.state.lock()
 					self.robotSocket.flush(self.state.pacmanLoc.row, self.state.pacmanLoc.col)
+					needsNewInstructionOld = False
 					self.state.unlock()
+					# print("release lock commsLoop")
 					firstIt = False
 
 				# Otherwise, send out relevant messages
 				else:
-					if self.state.writeServerBuf and self.state.writeServerBuf[0].tick():
-						srvmsg: ServerMessage = self.state.writeServerBuf.popleft()
-						msg = srvmsg.getBytes()
-						dist, row, col = srvmsg.dist, srvmsg.row, srvmsg.col
-						self.robotSocket.moveNoCoal(msg, row, col, dist)
-						if self.state.writeServerBuf:
-							self.state.writeServerBuf[0].skipDelay()
+					if not self._hasSent: # has not sent yet
+						if self.state.writeServerBuf and self.state.writeServerBuf[0].tick():
+							print("sending new command=============")
+							srvmsg: ServerMessage = self.state.writeServerBuf.popleft()
+							msg = srvmsg.getBytes()
+							dist, row, col = srvmsg.dist, srvmsg.row, srvmsg.col
+							self.robotSocket.moveNoCoal(msg, row, col, dist)
+							oldMsg, oldRow, oldCol, oldDist = (msg, row, col, dist)
+							self._hasSent = True # one message at a time
+							needsNewInstructionOld = False
+							if self.state.writeServerBuf:
+								self.state.writeServerBuf[0].skipDelay()
+					else: # already has sent
+						self.robotSocket.moveNoCoal(oldMsg, oldRow, oldCol, oldDist, updateSeq=False)
 
 				# Free the event loop to allow another decision
 				await asyncio.sleep(0.025)
