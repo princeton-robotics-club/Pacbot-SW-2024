@@ -54,8 +54,6 @@ class RobotSocket:
         self.val2: int = 0
         self.done: bool = False
 
-
-
     def moveNoCoal(self, command: bytes, row: int, col: int, dist: int) -> None:
 
         print(f'{CYAN}sending command{NORMAL}', command, dist, '->', row, col)

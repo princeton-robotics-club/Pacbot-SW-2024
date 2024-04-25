@@ -5,7 +5,7 @@ import json
 import asyncio
 
 # typing for event handlers
-from typing import Any, Awaitable, Callable, List
+from typing import Any, Awaitable, Callable, Coroutine, List
 
 # Websockets (for communication with the server)
 from websockets.sync.client import connect, ClientConnection # type: ignore
@@ -97,21 +97,39 @@ class PacbotClient:
 		# Decision module (policy) to make high-level decisions
 		self.decisionModule: DecisionModule = DecisionModule(self.state)
 
+		# CV update event subscribers
+		self._cvUpdateEventSubscribers: List[Callable[[],  Awaitable[Any]]] = []
+		self.registerCvUpdateHandler(self.decisionModule.cvUpdateEventHandler)
+
 		# Done event subscribers
-		self.doneEventSubscribers: List[Callable[[bool],  Awaitable[Any]]] = []
+		self._doneEventSubscribers: List[Callable[[bool],  Awaitable[Any]]] = []
 		self.registerDoneHandler(self.doneEventHandler) # example of registering a subscriber
 		self.registerDoneHandler(self.decisionModule.doneEventHandler)
 
 
+	""" Incoming CV information event """
+	async def notifyCvUpdateEvent(self):
+		print("PacbotClient - Event: CV Update - pacbot location has changed")
+		for handler in self._cvUpdateEventSubscribers:
+			await handler()
+
+	def registerCvUpdateHandler(self, handler: Callable[[],  Coroutine[Any, Any, None]]):
+		self._cvUpdateEventSubscribers.append(handler)
+
+	def unRegisterCvUpdateHandler(self, handler: Callable[[],  Coroutine[Any, Any, None]]):
+		self._cvUpdateEventSubscribers.remove(handler)
+
+	""" PB Done moving event """
 	async def notifyDoneEvent(self, done: bool):
-		for handler in self.doneEventSubscribers:
+		print("PacbotClient - Event: Done Update - " + str(done))
+		for handler in self._doneEventSubscribers:
 			await handler(done)
 
-	def registerDoneHandler(self, doneEventHandler: Callable[[bool], Awaitable[Any]]):
-		self.doneEventSubscribers.append(doneEventHandler)
+	def registerDoneHandler(self, handler: Callable[[bool], Awaitable[Any]]):
+		self._doneEventSubscribers.append(handler)
 
-	def unRegisterDoneHandler(self, doneEventHandler: Callable[[bool], Awaitable[Any]]):
-		raise Exception("unimplemented")
+	def unRegisterDoneHandler(self, handler: Callable[[bool], Awaitable[Any]]):
+		self._doneEventSubscribers.remove(handler)
 	
 
 
@@ -183,6 +201,9 @@ class PacbotClient:
 		Receive loop for capturing messages from the server
 		'''
 
+		pacRow: int = -1
+		pacCol: int = -1
+
 		# Receive values as long as the connection is open
 		while self.isOpen():
 
@@ -200,7 +221,14 @@ class PacbotClient:
 					messageBytes = message.encode('ascii') # type: ignore
 
 				# Update the state, given this message from the server
+				# TODO: why is there no lock here??
 				self.state.update(messageBytes)
+
+				# Notify subscribers of a CV update event AFTER state has updated
+				newRow = self.state.pacmanLoc.row
+				newCol = self.state.pacmanLoc.col
+				if pacRow != newRow or pacCol != newCol:
+					await self.notifyCvUpdateEvent()
 
 				# Write a response back to the server if necessary
 				if (self.simulationFlag):

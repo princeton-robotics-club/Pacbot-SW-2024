@@ -10,8 +10,6 @@ from gameState import *
 # A-Star Policy
 from policies.astar.aStarPolicy import *
 
-# Comms module type
-from robotSocket import RobotSocket
 
 # Get the FPS of the server from the config.json file
 def getGameFPS() -> int:
@@ -46,11 +44,19 @@ class DecisionModule:
 		self.pelletTarget.row = 23
 		self.pelletTarget.col = 14
 
+	''' Immediately halt all policy calculations
+	break from policy.act() (this updates a flag, break might happen slightly later)
+	'''
+	async def haltPolicyCalculations(self):
+		print("[Decision Module] halting policy calculations")
+		await self.policy.breakFromAct()
+
 	async def doneEventHandler(self, done: bool):
 		if done:
-			print("[Decision Module] triggering break from act")
-			# break from policy (this updates a flag, break might happen slightly later)
-			await self.policy.breakFromAct()
+			await self.haltPolicyCalculations()
+
+	async def cvUpdateEventHandler(self):
+		await self.haltPolicyCalculations()
 
 	async def decisionLoop(self) -> None:
 		'''
