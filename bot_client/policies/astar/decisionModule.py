@@ -47,6 +47,15 @@ class DecisionModule:
 		# gate for calculations
 		self.doPolicy = True
 
+
+		# do act no loop
+		self.wait = True
+		self.gameFPS = getGameFPS()
+		self.victimColor = GhostColors.NONE
+		self.pelletTarget = Location(self.state)
+		self.pelletTarget.row = 23
+		self.pelletTarget.col = 14
+
 	''' Immediately halt all policy calculations
 	break from policy.act() (this updates a flag, break might happen slightly later)
 	'''
@@ -54,9 +63,12 @@ class DecisionModule:
 		print("[Decision Module] halting policy calculations")
 		await self.policy.breakFromAct()
 
-	async def doneEventHandler(self, done: bool):
-		if not done:
-			await self.haltPolicyCalculations()
+	async def doneEventHandler(self, needsNewCommand: bool):
+		# if not done:
+		# 	await self.haltPolicyCalculations()
+  
+		if needsNewCommand:
+			self.doPolicy = False
 
 	async def cvUpdateEventHandler(self):
 		await self.haltPolicyCalculations()
@@ -111,18 +123,78 @@ class DecisionModule:
 			# await asyncio.sleep(0.5)
 
 			# Figure out which actions to take, according to the policy
-			print("[ astar calculating...")
+			# print("[ astar calculating...")
 			# victimColor, pelletTarget = await self.policy.act(3, victimColor, pelletTarget)
 			victimColor, pelletTarget = await self.policy.act(24, victimColor, pelletTarget)
-			print("]")
+			# print("]")
 
 			# Unlock the game state
 			self.state.unlock()
 			# print("unlock decision loop")
+   
 
 			# Free up the event loop
 			await asyncio.sleep(0.005)
 
 			wait = True
 
-			self.doPolicy = False
+			# self.doPolicy = False
+   
+
+	# async def decisionNoLoop(self) -> None:
+	# 	'''
+	# 	Decision loop for Pacbot
+	# 	'''
+
+
+	# 	# Receive values as long as we have access
+	# 	if not self.state.isConnected():
+	# 		return
+
+	# 	'''
+	# 	WARNING: 'await' statements should be routinely placed
+	# 	to free the event loop to receive messages, or the
+	# 	client may fall behind on updating the game state!
+	# 	'''
+
+	# 	# If the current messages haven't been sent out yet, skip this iteration
+	# 	# print("get lock decision loop")
+	# 	if self.state.isLocked():
+	# 		await asyncio.sleep(0)
+	# 		# wait = True
+	# 		return
+
+	# 	# Wait for one game tick, idk why exactly...
+	# 	if self.wait:
+	# 		await asyncio.sleep(1/self.gameFPS)
+	# 		self.wait = False
+
+	# 	# make sure game is not paused
+	# 	if self.state.gameMode == 0:
+	# 		await asyncio.sleep(0)
+	# 		return
+
+	# 	# Lock the game state
+	# 	self.state.lock()
+	# 	# print("done get lock decision loop")
+
+
+	# 	# # TODO: remove later; for testing purposes
+	# 	# await asyncio.sleep(0.5)
+
+	# 	# Figure out which actions to take, according to the policy
+	# 	print("[ astar calculating...")
+	# 	# victimColor, pelletTarget = await self.policy.act(3, victimColor, pelletTarget)
+	# 	self.victimColor, self.pelletTarget = await self.policy.act(24, self.victimColor, self.pelletTarget)
+	# 	print("]")
+
+	# 	# Unlock the game state
+	# 	self.state.unlock()
+
+	# 	# print("unlock decision loop")
+
+	# 	# Free up the event loop
+	# 	# await asyncio.sleep(0.005)
+
+	# 	self.wait = True
+

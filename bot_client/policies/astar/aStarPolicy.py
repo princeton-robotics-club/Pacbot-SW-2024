@@ -381,7 +381,7 @@ class AStarPolicy:
 			self.target = pelletTarget
 
 	async def act(self, predicted_delay: int, victimColor: GhostColors, pelletTarget: Location) -> tuple[GhostColors, Location]:
-		print("targeting: ", pelletTarget.row, " ", pelletTarget.col)
+		# print("targeting: ", pelletTarget.row, " ", pelletTarget.col)
 
 		# Make a priority queue of A-Star Nodes
 		priorityQueue: list[AStarNode] = []

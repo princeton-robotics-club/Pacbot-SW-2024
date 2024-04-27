@@ -15,3 +15,11 @@ class CommandDirection(IntEnum):
     EAST=1
     WEST=2
     SOUTH=3
+
+
+class States(IntEnum):
+    NONE=-1
+    WAITING_ACK=0
+    WAITING_GME=1
+    WAITING_AST=2
+    WAITING_SEND=2

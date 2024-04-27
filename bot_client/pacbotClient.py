@@ -13,6 +13,7 @@ from websockets.exceptions import ConnectionClosedError # type: ignore
 from websockets.typing import Data # type: ignore
 
 # Game state
+from shared import States
 from gameState import GameState
 
 # Decision module
@@ -99,7 +100,7 @@ class PacbotClient:
 
 		# CV update event subscribers
 		self._cvUpdateEventSubscribers: List[Callable[[],  Awaitable[Any]]] = []
-		# self.registerCvUpdateHandler(self.decisionModule.cvUpdateEventHandler)
+		self.registerCvUpdateHandler(self.decisionModule.cvUpdateEventHandler)
 
 		# Done event subscribers
 		self._doneEventSubscribers: List[Callable[[bool],  Awaitable[Any]]] = []
@@ -108,6 +109,10 @@ class PacbotClient:
 
 		# Gate for sending messages
 		self._hasSent = False
+
+
+		self.stateMachine: States = States.NONE
+
 
 
 	""" Incoming CV information event """
@@ -147,15 +152,33 @@ class PacbotClient:
 			self.state.writeServerBuf.clear()
 			self.state.unlock()
 
+
+			if self.stateMachine == States.WAITING_ACK:
+				self.updateStateMachine()
+
+
+			# await self.decisionModule.decisionNoLoop()
+
 			# print("release locked doneEventHandler")
 			# print(f'{RED}robot just told us it\'s done{NORMAL}')
 		else:
 			# print(f'{GREEN}robot has started executing{NORMAL}')
 			pass
 
-	# async def cvEventHandler(self):
-	# 	sk
+	# triggers when cv sees pb in new loc
+	async def cvUpdateEventHandler(self):
+		if self.stateMachine == States.WAITING_GME:
+			self.updateStateMachine()
+			
 
+	# forwards the game state from its current state
+	def updateStateMachine(self):
+		if self.stateMachine == States.WAITING_GME:
+			self.stateMachine = States.WAITING_AST
+		elif self.stateMachine == States.WAITING_AST:
+			self.stateMachine = States.WAITING_SEND
+		elif self.stateMachine == States.WAITING_SEND:
+			self.stateMachine = States.WAITING_GME
 
 	async def run(self) -> None:
 		'''
@@ -223,6 +246,11 @@ class PacbotClient:
 
 		# Receive values as long as the connection is open
 		while self.isOpen():
+			
+
+			# if self.stateMachine != States.WAITING_GME:
+			# 	await asyncio.sleep(0)
+			# 	continue
 
 			# Try to receive messages (and skip to except in case of an error)
 			try:
@@ -240,6 +268,7 @@ class PacbotClient:
 				# Update the state, given this message from the server
 				# TODO: why is there no lock here??
 				self.state.update(messageBytes)
+				# print(f'{CYAN}update from cv:{NORMAL} time={self.state.currTicks}', self.state.pacmanLoc.row, self.state.pacmanLoc.col)
 
 				# Notify subscribers of a CV update event AFTER state has updated
 				newRow = self.state.pacmanLoc.row
@@ -264,6 +293,7 @@ class PacbotClient:
 				self.state.setConnectionStatus(False)
 				break
 
+
 	async def commsLoop(self) -> None:
 		'''
 		Communication loop for sending messages to the robot
@@ -286,6 +316,11 @@ class PacbotClient:
 
 		# Keep sending messages as long as the server connection is open
 		while self.isOpen():
+
+			# if self.stateMachine != States.WAITING_ACK:
+			# 	await asyncio.sleep(0)
+			# 	print("\t]comms")
+			# 	continue
 
 			# Try to receive messages (and skip to except in case of an error)
 			try:
@@ -320,12 +355,14 @@ class PacbotClient:
 				# Otherwise, send out relevant messages
 				else:
 					if not self._hasSent: # has not sent yet
+
 						if self.state.writeServerBuf and self.state.writeServerBuf[0].tick():
 							print("sending new command=============")
 							srvmsg: ServerMessage = self.state.writeServerBuf.popleft()
 							msg = srvmsg.getBytes()
 							dist, row, col = srvmsg.dist, srvmsg.row, srvmsg.col
 							self.robotSocket.moveNoCoal(msg, row, col, dist)
+
 							oldMsg, oldRow, oldCol, oldDist = (msg, row, col, dist)
 							self._hasSent = True # one message at a time
 							needsNewInstructionOld = False
@@ -336,6 +373,7 @@ class PacbotClient:
 
 				# Free the event loop to allow another decision
 				await asyncio.sleep(0.025)
+
 
 			# Break once the connection is closed
 			except ConnectionClosedError:
