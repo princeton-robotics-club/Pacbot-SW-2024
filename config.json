@@ -1,5 +1,5 @@
 {
-  "ServerIP": "localhost",
+  "ServerIP": "192.168.0.102",
   "WebSocketPort": 3002,
   "OneClientPerIP": false,
 
@@ -9,5 +9,12 @@
   ],
 
   "GameFPS": 24,
-  "NumActiveGhosts": 4
+  "NumActiveGhosts": 4,
+  "PythonSimulation": false,
+  "FlushEnabled": false,
+  "CoalesceCommands": false,
+  "ReliablityEnabled": true,
+
+  "RobotIP": "192.168.0.106",
+  "RobotPort": 8081
 }
